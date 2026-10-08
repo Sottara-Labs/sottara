@@ -66,15 +66,43 @@ export class KvRelayPersistence implements RelayPersistence {
 
   async listRecipientQueue(recipient: string): Promise<RelayEnvelope[]> {
     const kv = this.kv as any;
-    const list = await kv.list({ prefix: KvRelayPersistence.MESSAGE_PREFIX });
     const results: RelayEnvelope[] = [];
+    const seenKeys = new Set<string>();
+    const seenCursors = new Set<string>();
     const norm = recipient.toUpperCase().trim();
-    for (const key of list.keys) {
-      const envelope = (await this.kv.get(key.name, "json")) as RelayEnvelope | null;
-      if (envelope && envelope.recipient?.toUpperCase().trim() === norm) {
-        results.push(envelope);
+
+    let cursor: string | undefined;
+    while (true) {
+      const list = await kv.list({
+        prefix: KvRelayPersistence.MESSAGE_PREFIX,
+        ...(cursor ? { cursor } : {}),
+      });
+
+      for (const key of list.keys ?? []) {
+        if (seenKeys.has(key.name)) continue;
+        seenKeys.add(key.name);
+
+        const envelope = (await this.kv.get(key.name, "json")) as RelayEnvelope | null;
+        if (envelope && envelope.recipient?.toUpperCase().trim() === norm) {
+          results.push(envelope);
+        }
       }
+
+      if (list.list_complete) break;
+
+      const nextCursor: unknown = list.cursor;
+      if (
+        typeof nextCursor !== "string" ||
+        nextCursor.length === 0 ||
+        seenCursors.has(nextCursor)
+      ) {
+        break;
+      }
+
+      seenCursors.add(nextCursor);
+      cursor = nextCursor;
     }
+
     return results;
   }
 

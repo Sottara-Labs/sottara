@@ -5,8 +5,16 @@ import type { RelayEnvelope } from "../../../src/services/relay/persistence";
 
 class MockKVNamespace {
   public store = new Map<string, string>();
+  public listPages: Array<{
+    keys: Array<{ name: string }>;
+    list_complete: boolean;
+    cursor?: string;
+  }> = [{ keys: [], list_complete: true }];
+  public listCalls: Array<{ prefix?: string; cursor?: string }> = [];
+  public getCalls: string[] = [];
 
   async get(key: string, type?: "text" | "json") {
+    this.getCalls.push(key);
     const val = this.store.get(key);
     if (val === undefined) return null;
     if (type === "json") return JSON.parse(val);
@@ -15,6 +23,16 @@ class MockKVNamespace {
 
   async put(key: string, value: string): Promise<void> {
     this.store.set(key, value);
+  }
+
+  async list(options: { prefix?: string; cursor?: string }) {
+    this.listCalls.push(options);
+    return (
+      this.listPages.shift() ?? {
+        keys: [],
+        list_complete: true,
+      }
+    );
   }
 }
 
@@ -39,6 +57,12 @@ function envelope(overrides: Partial<RelayEnvelope> = {}): RelayEnvelope {
     },
     ...overrides,
   };
+}
+
+function seedMessage(kv: MockKVNamespace, value: RelayEnvelope): string {
+  const key = `relay:message:${value.messageId}`;
+  kv.store.set(key, JSON.stringify(value));
+  return key;
 }
 
 describe("KvRelayPersistence admission idempotency (BETA-036)", () => {
@@ -76,5 +100,147 @@ describe("KvRelayPersistence admission idempotency (BETA-036)", () => {
     expect(stored?.admission.kind).toBe("trusted");
     expect(stored?.admission.policyVersion).toBe(3);
     expect(await persistence.getQueueDepth()).toBe(1);
+  });
+});
+
+describe("KvRelayPersistence.listRecipientQueue pagination", () => {
+  it("returns an empty queue when the KV prefix has no keys", async () => {
+    const kv = new MockKVNamespace();
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(envelope().recipient)).resolves.toEqual([]);
+    expect(kv.listCalls).toHaveLength(1);
+    expect(kv.listCalls[0]).toEqual({ prefix: "relay:message:" });
+  });
+
+  it("reads a single page using the existing message-key layout", async () => {
+    const kv = new MockKVNamespace();
+    const first = envelope({ messageId: "1".repeat(64) });
+    const key = seedMessage(kv, first);
+    kv.listPages = [{ keys: [{ name: key }], list_complete: true }];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(first.recipient)).resolves.toEqual([first]);
+    expect(kv.getCalls).toContain(key);
+  });
+
+  it("preserves messages from two pages for the same recipient", async () => {
+    const kv = new MockKVNamespace();
+    const first = envelope({ messageId: "1".repeat(64) });
+    const second = envelope({ messageId: "2".repeat(64) });
+    const firstKey = seedMessage(kv, first);
+    const secondKey = seedMessage(kv, second);
+    kv.listPages = [
+      { keys: [{ name: firstKey }], list_complete: false, cursor: "page-2" },
+      { keys: [{ name: secondKey }], list_complete: true },
+    ];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(first.recipient)).resolves.toEqual([first, second]);
+    expect(kv.listCalls).toEqual([
+      { prefix: "relay:message:" },
+      { prefix: "relay:message:", cursor: "page-2" },
+    ]);
+  });
+
+  it("finds a recipient whose only message is on the second page", async () => {
+    const kv = new MockKVNamespace();
+    const other = envelope({ messageId: "1".repeat(64) });
+    const target = envelope({ messageId: "2".repeat(64), recipient: `G${"C".repeat(55)}` });
+    const otherKey = seedMessage(kv, other);
+    const targetKey = seedMessage(kv, target);
+    kv.listPages = [
+      { keys: [{ name: otherKey }], list_complete: false, cursor: "page-2" },
+      { keys: [{ name: targetKey }], list_complete: true },
+    ];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
+  });
+
+  it("filters messages for different recipients while retaining legacy key reads", async () => {
+    const kv = new MockKVNamespace();
+    const target = envelope({ messageId: "1".repeat(64) });
+    const other = envelope({ messageId: "2".repeat(64), recipient: `G${"C".repeat(55)}` });
+    const targetKey = seedMessage(kv, target);
+    const otherKey = seedMessage(kv, other);
+    kv.listPages = [{ keys: [{ name: targetKey }, { name: otherKey }], list_complete: true }];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
+    // Existing global message keys require reading envelope contents to filter by recipient.
+    expect(kv.getCalls).toEqual([targetKey, otherKey]);
+  });
+
+  it("normalizes the requested recipient and stored recipient", async () => {
+    const kv = new MockKVNamespace();
+    const target = envelope({ messageId: "1".repeat(64) });
+    const key = seedMessage(kv, target);
+    kv.listPages = [{ keys: [{ name: key }], list_complete: true }];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(
+      persistence.listRecipientQueue(`  ${target.recipient.toLowerCase()}  `),
+    ).resolves.toEqual([target]);
+  });
+
+  it("stops after a final empty page and preserves earlier results", async () => {
+    const kv = new MockKVNamespace();
+    const target = envelope({ messageId: "1".repeat(64) });
+    const key = seedMessage(kv, target);
+    kv.listPages = [
+      { keys: [{ name: key }], list_complete: false, cursor: "page-2" },
+      { keys: [], list_complete: true },
+    ];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
+    expect(kv.listCalls).toHaveLength(2);
+  });
+
+  it("stops when KV repeats a cursor without discarding prior-page messages", async () => {
+    const kv = new MockKVNamespace();
+    const first = envelope({ messageId: "1".repeat(64) });
+    const second = envelope({ messageId: "2".repeat(64) });
+    const firstKey = seedMessage(kv, first);
+    const secondKey = seedMessage(kv, second);
+    kv.listPages = [
+      { keys: [{ name: firstKey }], list_complete: false, cursor: "repeat" },
+      { keys: [{ name: secondKey }], list_complete: false, cursor: "repeat" },
+    ];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(first.recipient)).resolves.toEqual([first, second]);
+    expect(kv.listCalls).toHaveLength(2);
+  });
+
+  it("stops safely when an incomplete page has no usable cursor", async () => {
+    const kv = new MockKVNamespace();
+    const target = envelope({ messageId: "1".repeat(64) });
+    const key = seedMessage(kv, target);
+    kv.listPages = [{ keys: [{ name: key }], list_complete: false }];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
+    expect(kv.listCalls).toHaveLength(1);
+  });
+
+  it("ignores missing records and duplicate keys across pages", async () => {
+    const kv = new MockKVNamespace();
+    const target = envelope({ messageId: "1".repeat(64) });
+    const key = seedMessage(kv, target);
+    const missingKey = "relay:message:missing";
+    kv.listPages = [
+      {
+        keys: [{ name: key }, { name: missingKey }],
+        list_complete: false,
+        cursor: "page-2",
+      },
+      { keys: [{ name: key }], list_complete: true },
+    ];
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+
+    await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
+    expect(kv.getCalls).toEqual([key, missingKey]);
   });
 });
