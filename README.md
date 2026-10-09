@@ -7,13 +7,13 @@
 [![CI](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-| Review item       | Current status                                                                                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| License           | MIT; see [`LICENSE`](LICENSE)                                                                                                                                                      |
-| Development       | Local application and testnet development paths; beta software                                                                                                                     |
-| Hosted experience | No verified public Sottara demo URL yet; the screenshot-like panel below is an illustration                                                                                           |
+| Review item       | Current status                                                                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| License           | MIT; see [`LICENSE`](LICENSE)                                                                                                                                                            |
+| Development       | Local application and testnet development paths; beta software                                                                                                                           |
+| Hosted experience | No verified public Sottara demo URL yet; the screenshot-like panel below is an illustration                                                                                              |
 | CI / deployment   | Check the [latest CI run](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml) and [deployment notes](docs/deployment/README.md); CI success and deployment are separate |
-| Contributions     | Public issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                                                              |
+| Contributions     | Public issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                                                                    |
 
 Sottara is an open-source beta for private email built around Stellar identity and programmable inbox access. Mailbox owners can decide how unfamiliar senders reach them: allow a verified identity, request approval, require postage, or block the sender. Encrypted message content stays off-chain; Stellar is used for identity and verifiable protocol actions.
 
@@ -102,6 +102,11 @@ bun run lint               # lint
 bun x tsc --noEmit         # TypeScript types
 bun run test               # unit tests
 bun run build              # production bundle / worker build
+bun run test:security      # security and authorization regressions
+bun run test:e2e           # Chromium end-to-end browser flows
+bun run test:visual        # cross-browser visual regressions
+bun run test:load          # relay/API load and performance budget
+bun run ci:verify-drift    # generated/configuration drift checks
 ```
 
 Contract-focused work should also run the relevant commands in [`contracts/soroban/`](contracts/soroban/). See [contributor setup](CONTRIBUTING.md) for the repository workflow and [security verification](docs/security/README.md) for security-specific checks.
@@ -128,9 +133,9 @@ The system is designed to keep message bodies and attachments out of public ledg
 
 Copy `.env.example` to `.env` and fill in your values (see the file for inline docs). Key groups:
 
-| Variable group | Key variables |
-| --- | --- |
-| Storage (KV) | `SOTTARA_KV_LOCAL_ID`, `SOTTARA_KV_PREVIEW_ID`, `SOTTARA_KV_PRODUCTION_ID` |
+| Variable group | Key variables                                                              |
+| -------------- | -------------------------------------------------------------------------- |
+| Storage (KV)   | `SOTTARA_KV_LOCAL_ID`, `SOTTARA_KV_PREVIEW_ID`, `SOTTARA_KV_PRODUCTION_ID` |
 
 ## Security
 
@@ -160,8 +165,8 @@ Sottara is distributed under the [MIT License](LICENSE).
 
 ## Prerequisites
 
-| Tool | Notes |
-| --- | --- |
-| **Node.js** | 24+ and Bun 1.3 |
-| **Cloudflare Wrangler** | Workers / KV |
-| **Rust** | for the contracts |
+| Tool                    | Notes             |
+| ----------------------- | ----------------- |
+| **Node.js**             | 24+ and Bun 1.3   |
+| **Cloudflare Wrangler** | Workers / KV      |
+| **Rust**                | for the contracts |
