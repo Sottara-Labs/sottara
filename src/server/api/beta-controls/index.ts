@@ -16,7 +16,10 @@ let initialized = false;
 export function createBetaControlService(config?: BetaControlConfig): BetaControlService {
   const full = loadRuntimeConfig();
   const resolved = config ?? full.betaControl;
-  const persistence = createBetaControlPersistence(full.storage.kvBinding);
+  const persistence = createBetaControlPersistence(
+    full.storage.kvBinding,
+    full.storage.coordinatorBinding,
+  );
   return new BetaControlService({ config: resolved, persistence });
 }
 
