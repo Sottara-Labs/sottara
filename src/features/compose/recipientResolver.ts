@@ -35,7 +35,6 @@ export type RecipientResolutionContext = {
 /**
  * Resolves a single recipient address to determine if it's valid, verified, unknown, or blocked.
  * Supports:
- * - Hush addresses (S...)
  * - Stellar G-addresses (G...)
  * - Hush email handles (username@stealth.me, username@stealth.xyz)
  * - Federation addresses (name*domain)
@@ -246,10 +245,11 @@ export async function resolveRecipient(
 }
 
 /**
- * Helper to check if address is already in Stellar format (G or S prefix)
+ * Helper to check if address is already in Stellar account format.
+ * Secret keys use the S prefix and must never be treated as accounts.
  */
 function isStellarFormat(address: string): boolean {
-  return /^[GS][A-Z0-9]{55}$/i.test(address);
+  return /^G[A-Z2-7]{55}$/i.test(address);
 }
 
 /**
@@ -285,9 +285,12 @@ export function validateRecipientFormat(address: string): {
     return { valid: false, error: "Address is required" };
   }
 
-  // Hush address (S...)
+  // Stellar secret keys (S...) must never be accepted as recipients.
   if (/^s[a-z0-9]{55}$/i.test(trimmed)) {
-    return { valid: true };
+    return {
+      valid: false,
+      error: "Secret keys cannot be used as recipient addresses",
+    };
   }
 
   // Stellar G-address (56 chars, starts with G)
