@@ -7,6 +7,56 @@ import {
 
 describe("recipientResolver", () => {
   describe("resolveRecipient", () => {
+    it("emits redacted diagnostics for contact lookup failures", async () => {
+      const diagnostics: unknown[] = [];
+      const context: RecipientResolutionContext = {
+        resolveContact: vi.fn().mockRejectedValue(new Error("lookup failed for alice@example.com")),
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      };
+
+      const result = await resolveRecipient("alice", new Set(), context);
+
+      expect(result.provenance).toContain("contact-lookup-degraded");
+      expect(diagnostics).toEqual([
+        expect.objectContaining({
+          source: "contact-lookup",
+          detail: "Error",
+        }),
+      ]);
+      expect(JSON.stringify(diagnostics)).not.toContain("alice@example.com");
+    });
+
+    it.each([
+      [
+        "federation-resolution",
+        "alice*stellar.org",
+        "resolveFederation",
+        "federation-resolution-degraded",
+      ],
+      ["identity-resolution", "alice", "identityResolver", "identity-resolution-degraded"],
+    ])(
+      "marks %s failures as degraded without logging the address",
+      async (_source, address, resolver, marker) => {
+        const diagnostics: unknown[] = [];
+        const context: RecipientResolutionContext = {
+          onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+          ...(resolver === "resolveFederation"
+            ? { resolveFederation: vi.fn().mockRejectedValue(new Error("federation failed")) }
+            : {
+                identityResolver: {
+                  resolve: vi.fn().mockRejectedValue(new Error("identity failed")),
+                } as unknown as RecipientResolutionContext["identityResolver"],
+              }),
+        };
+
+        const result = await resolveRecipient(address, new Set(), context);
+
+        expect(result.provenance).toContain(marker);
+        expect(diagnostics).toHaveLength(1);
+        expect(JSON.stringify(diagnostics)).not.toContain(address);
+      },
+    );
+
     it("should reject invalid addresses", async () => {
       const blocked = new Set<string>();
       const result = await resolveRecipient("invalid email@", blocked);
