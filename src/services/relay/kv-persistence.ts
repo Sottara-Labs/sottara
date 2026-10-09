@@ -53,7 +53,16 @@ export class KvRelayPersistence implements RelayPersistence {
   }
 
   async dequeue(): Promise<RelayEnvelope | null> {
-    return null;
+    // Best-effort, non-atomic: list the head message key, read it, delete it.
+    // Two workers can race on the head key; the depth counter is floored at 0.
+    const list = await this.kv.list({ prefix: KvRelayPersistence.MESSAGE_PREFIX, limit: 1 });
+    const key = list.keys[0]?.name;
+    if (!key) return null;
+    const envelope = await this.kv.get<RelayEnvelope>(key, "json");
+    if (!envelope) return null;
+    await this.kv.delete(key);
+    await this.decrementCounter(KvRelayPersistence.QUEUE_DEPTH_KEY);
+    return envelope;
   }
 
   async recordRetry(): Promise<void> {
@@ -87,5 +96,10 @@ export class KvRelayPersistence implements RelayPersistence {
   private async incrementCounter(key: string): Promise<void> {
     const value = await this.readCounter(key);
     await this.kv.put(key, String(value + 1));
+  }
+
+  private async decrementCounter(key: string): Promise<void> {
+    const value = await this.readCounter(key);
+    await this.kv.put(key, String(Math.max(0, value - 1)));
   }
 }
