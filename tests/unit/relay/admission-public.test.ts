@@ -2,10 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AdmissionEvidence, AdmissionReason } from "@/server/api/domain";
 import { ADMISSION_REASON_MESSAGES } from "@/server/api/policy-admission";
-import {
-  admissionDenialError,
-  publicAdmissionDecision,
-} from "@/services/relay/admission";
+import { admissionDenialError, publicAdmissionDecision } from "@/services/relay/admission";
 
 function createMockEvidence(
   reason: AdmissionReason = "sender_blocked",
@@ -87,18 +84,15 @@ describe("admissionDenialError", () => {
     "receipt_required",
   ];
 
-  it.each(otherDenialReasons)(
-    "maps denial reason %s to HTTP 403 with code forbidden",
-    (reason) => {
-      const evidence = createMockEvidence(reason);
-      const err = admissionDenialError(evidence);
+  it.each(otherDenialReasons)("maps denial reason %s to HTTP 403 with code forbidden", (reason) => {
+    const evidence = createMockEvidence(reason);
+    const err = admissionDenialError(evidence);
 
-      expect(err.status).toBe(403);
-      expect(err.code).toBe("forbidden");
-      expect(err.message).toBe(ADMISSION_REASON_MESSAGES[reason]);
-      expect(err.details).toEqual(publicAdmissionDecision(evidence));
-    },
-  );
+    expect(err.status).toBe(403);
+    expect(err.code).toBe("forbidden");
+    expect(err.message).toBe(ADMISSION_REASON_MESSAGES[reason]);
+    expect(err.details).toEqual(publicAdmissionDecision(evidence));
+  });
 
   it("never leaks raw chain error text in the error message", () => {
     const rawErrorEvidence = createMockEvidence("sender_blocked", {
