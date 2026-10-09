@@ -371,7 +371,7 @@ export class PostageEscrowAdapter {
       }
 
       if ((submitRes as any).status === "DUPLICATE") {
-        const existing = await this.confirm(txHash, messageId, operation);
+        const existing = await this.confirm(txHash, messageId);
         if (existing) {
           return {
             success: true,
@@ -396,7 +396,7 @@ export class PostageEscrowAdapter {
         };
       }
 
-      const confirmed = await this.confirm(txHash, messageId, operation);
+      const confirmed = await this.confirm(txHash, messageId);
       if (!confirmed) {
         return {
           success: false,
@@ -444,7 +444,6 @@ export class PostageEscrowAdapter {
   private async confirm(
     txHash: string,
     messageId: string,
-    operation: PostageOperation,
     maxAttempts = 15,
     sleepMs = 1500,
   ): Promise<{ postage?: ChainPostage; confirmation: ChainConfirmation } | null> {
@@ -455,11 +454,7 @@ export class PostageEscrowAdapter {
         const status = res.status;
         if (status === "SUCCESS") {
           const ledger = res.ledgers?.[0]?.sequence ?? (Number(res.ledger) || 0);
-          const resultMeta = (res as any).resultMetaXdr;
-          const postage =
-            this.extractPostageFromResult(resultMeta, operation) ??
-            (await this.readOnChainPostage(messageId)) ??
-            undefined;
+          const postage = (await this.readOnChainPostage(messageId)) ?? undefined;
           return {
             postage,
             confirmation: {
@@ -478,13 +473,6 @@ export class PostageEscrowAdapter {
       await this.sleep(sleepMs);
     }
     return null;
-  }
-
-  private extractPostageFromResult(
-    _resultMeta: string | undefined,
-    _operation: PostageOperation,
-  ): ChainPostage | undefined {
-    return undefined;
   }
 
   private sleep(ms: number): Promise<void> {

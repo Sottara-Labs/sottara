@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PostageEscrowAdapter,
   classifyRetry,
@@ -207,5 +207,30 @@ describe("PostageEscrowAdapter", () => {
 
     const reclaim = await adapter.reclaimEscrow(messageId, sender);
     expect(reclaim.chainStatus).toBe("not_submitted");
+  });
+
+  it("resolves confirmed postage through the on-chain fallback", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    const postage = {
+      amount: 1000n,
+      created_at: 1n,
+      dispute_until: 2n,
+      expires_at: 3n,
+      fee: 10n,
+      recipient: "G" + "A".repeat(55),
+      sender: "G" + "B".repeat(55),
+      status: 0,
+    } as const;
+    vi.spyOn(adapter, "readOnChainPostage").mockResolvedValue(postage);
+    (adapter as any).makeRpcServer = () => ({
+      getTransaction: vi.fn().mockResolvedValue({ status: "SUCCESS", ledger: 42 }),
+    });
+    (adapter as any).sleep = vi.fn();
+
+    const confirmation = await (adapter as any).confirm("tx-hash", "a".repeat(64));
+    expect(confirmation).toEqual({
+      postage,
+      confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
+    });
   });
 });
