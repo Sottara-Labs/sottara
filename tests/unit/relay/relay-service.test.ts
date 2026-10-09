@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { MemoryRelayPersistence } from "../../../src/services/relay/memory-persistence";
-import { RelayService, type RelayServiceConfig } from "../../../src/services/relay/relay-service";
+import {
+  RelayService,
+  type RelayMailboxStore,
+  type RelayServiceConfig,
+} from "../../../src/services/relay/relay-service";
 import type { RelayEnvelope, RelayPersistence } from "../../../src/services/relay/persistence";
 import { InProcessRelayWorker } from "../../../src/services/relay/in-process-worker";
 import type { RelayAdmissionEvaluator } from "../../../src/services/relay/policy-admission";
@@ -98,6 +102,17 @@ class FailingPersistence implements RelayPersistence {
 }
 
 describe("RelayService health", () => {
+  it("requires an explicit repository and never substitutes the mailbox", () => {
+    const { persistence, worker } = makeService();
+    const mailbox = {} as RelayMailboxStore;
+    const service = new RelayService(persistence, worker, makeConfig(), {
+      evaluator: allowAllEvaluator(),
+      mailbox,
+    });
+
+    expect(service.getRepository()).toBeUndefined();
+  });
+
   it("reports ok liveness with pinned fields and no secrets", async () => {
     const { service } = makeService();
     const health = await service.checkHealth();
