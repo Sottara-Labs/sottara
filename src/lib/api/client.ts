@@ -104,7 +104,7 @@ export class ApiClient {
 
     if (!response.ok) {
       const error = parseErrorEnvelope(body, response.status);
-      if (error.status === 401 && this.onUnauthorized) {
+      if ((error.status === 401 || error.status === 403) && this.onUnauthorized) {
         this.onUnauthorized();
       }
       throw error;
