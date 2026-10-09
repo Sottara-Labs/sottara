@@ -178,6 +178,7 @@ jobs:
         with:
           name: client-dist
           path: dist/
+          if-no-files-found: error
           retention-days: 1
 
       - name: Upload gate results
@@ -264,6 +265,7 @@ jobs:
         with:
           name: contract-wasm
           path: contracts/soroban/target/wasm32v1-none/release/*.wasm
+          if-no-files-found: error
           retention-days: 1
 
       - name: Upload gate result
