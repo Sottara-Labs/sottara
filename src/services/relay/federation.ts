@@ -67,6 +67,7 @@ export type ActionableErrorCode =
   | "ERR_UNAUTHORIZED"
   | "ERR_PAYLOAD_REJECTED"
   | "ERR_DELIVERY_EXPIRED"
+  | "ERR_DELIVERY_RETRIES_EXHAUSTED"
   | "ERR_UNKNOWN_PERMANENT";
 
 export interface DeliveryResult {
@@ -153,7 +154,7 @@ export class FederationDeliveryService {
         }
       } catch (error) {
         if (attempts >= this.MAX_RETRIES) {
-          this.moveToDeadLetter(message, "ERR_DELIVERY_EXPIRED");
+          this.moveToDeadLetter(message, "ERR_DELIVERY_RETRIES_EXHAUSTED");
           state = "DEAD_LETTER";
         } else {
           // Bounded and jittered backoff
