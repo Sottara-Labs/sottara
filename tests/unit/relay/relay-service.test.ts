@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { MemoryRelayPersistence } from "../../../src/services/relay/memory-persistence";
 import { RelayService, type RelayServiceConfig } from "../../../src/services/relay/relay-service";
@@ -268,5 +268,40 @@ describe("RelayService submit", () => {
     input.postage = "-1";
 
     await expect(service.submit(input)).rejects.toBeInstanceOf(z.ZodError);
+  });
+});
+
+describe("RelayService local replay retention", () => {
+  it("rejects a nonce replay within the TTL and prunes it after expiry", () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = makeService(makeConfig({ nonceTtlMs: 1_000, idempotencyTtlMs: 2_000 }));
+
+      service.markNonceSeen("nonce-1");
+      expect(service.isNonceSeen("nonce-1")).toBe(true);
+
+      vi.advanceTimersByTime(1_000);
+      expect(service.isNonceSeen("nonce-1")).toBe(false);
+      expect((service as any).seenNonces.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains idempotency results only for the configured TTL", () => {
+    vi.useFakeTimers();
+    try {
+      const { service } = makeService(makeConfig({ nonceTtlMs: 1_000, idempotencyTtlMs: 2_000 }));
+
+      service.storeIdempotencyResult("key-1", { status: 202 });
+      expect(service.getIdempotencyResult("key-1")).toEqual({ status: 202 });
+      expect((service as any).idempotencyStore.size).toBe(1);
+
+      vi.advanceTimersByTime(2_000);
+      expect(service.getIdempotencyResult("key-1")).toBeNull();
+      expect((service as any).idempotencyStore.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
