@@ -38,11 +38,18 @@ export function deriveSecretScanStatus({
   return { status: "pass", message: null };
 }
 
-export function deriveBetaSecurityStatus({ cryptoOutcome, evidence } = {}) {
+export function deriveBetaSecurityStatus({ cryptoOutcome, securityOutcome, evidence } = {}) {
   if (cryptoOutcome === "failure") {
     return {
       status: "fail",
       message: "Crypto or managed-wallet tests failed",
+    };
+  }
+
+  if (securityOutcome === "failure") {
+    return {
+      status: "fail",
+      message: "Security regression tests failed",
     };
   }
 

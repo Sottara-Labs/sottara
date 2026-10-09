@@ -488,6 +488,7 @@ jobs:
         run: |
           node scripts/ci/write-beta-security-gate.mjs \
             --crypto "${{ steps.crypto.outcome }}" \
+            --security "${{ steps.security_regression.outcome }}" \
             --evidence gate-result-beta-084-security.json
 
       - name: Upload gate result
