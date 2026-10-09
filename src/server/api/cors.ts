@@ -88,16 +88,36 @@ export function corsPolicyFromEnv(
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
-export function csrfEarlyResponse(request: Request, policy: CorsPolicy): Response | undefined {
-  if (policy.allowedOrigins.some((origin) => origin.startsWith("http://localhost"))) {
-    return undefined;
+function isExplicitDevelopmentProfile(): boolean {
+  const profile = process.env.STEALTH_ENV ?? process.env.SOTTARA_ENV ?? process.env.NODE_ENV;
+  return profile === "development" || profile === "dev";
+}
+
+function requestOrigin(request: Request): string | null {
+  const origin = request.headers.get("Origin");
+  if (origin !== null) return origin;
+
+  const referer = request.headers.get("Referer");
+  if (!referer) return null;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
   }
+}
+
+export function csrfEarlyResponse(request: Request, policy: CorsPolicy): Response | undefined {
   if (!UNSAFE_METHODS.has(request.method.toUpperCase())) return undefined;
   if (!request.headers.get("cookie")) return undefined;
-  if (request.headers.get("Origin") || request.headers.get("Referer")) return undefined;
+  // Localhost entries are present in non-production policies for browser
+  // development. They must not disable CSRF protection for preview or test.
+  if (isExplicitDevelopmentProfile()) return undefined;
+
+  const origin = requestOrigin(request);
+  if (origin && policy.allowedOrigins.includes(origin)) return undefined;
 
   // SameSite=Lax is the primary browser defense; this closes clients that send
-  // the session cookie without the browser's Origin/Referer context.
+  // a session cookie without a trusted Origin/Referer context.
   const headers = new Headers();
   appendVary(headers, "Origin");
   return new Response(null, { status: 403, headers });
