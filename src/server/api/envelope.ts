@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { stellarAddressSchema, hash32Schema } from "./domain";
+import { canonicalize } from "../../services/crypto/jcs";
+
+export { canonicalize };
 
 export const encryptionMetadataSchema = z.object({
   algorithm: z.string(),
@@ -56,32 +59,6 @@ export const KNOWN_PAYLOAD_FIELDS = new Set([
   "attachments",
   "critical",
 ]);
-
-/**
- * Serializes any JSON-compatible value to its canonical JCS (RFC 8785) representation.
- */
-export function canonicalize(val: any): string {
-  if (val === null) {
-    return "null";
-  }
-  if (typeof val === "boolean" || typeof val === "number") {
-    return JSON.stringify(val);
-  }
-  if (typeof val === "string") {
-    return JSON.stringify(val);
-  }
-  if (Array.isArray(val)) {
-    return "[" + val.map(canonicalize).join(",") + "]";
-  }
-  if (typeof val === "object") {
-    const keys = Object.keys(val).sort();
-    const parts = keys.map((key) => {
-      return JSON.stringify(key) + ":" + canonicalize(val[key]);
-    });
-    return "{" + parts.join(",") + "}";
-  }
-  throw new Error(`Unsupported type for canonical serialization: ${typeof val}`);
-}
 
 /**
  * Validates the envelope structure and enforces that any unknown critical fields
