@@ -23,6 +23,7 @@ export class CryptoIdError extends Error {
 
 /** Number of random bytes in a generated message identifier. */
 export const MESSAGE_ID_BYTES = 16;
+const BASE64URL_MESSAGE_ID_LENGTH = Math.ceil((MESSAGE_ID_BYTES * 8) / 6);
 
 /** Encoding used for the identifier string. */
 export type MessageIdEncoding = "hex" | "base64url";
@@ -78,5 +79,5 @@ export function isValidMessageId(value: string, encoding: MessageIdEncoding = "h
   if (encoding === "hex") {
     return /^[0-9a-f]+$/.test(value) && value.length === MESSAGE_ID_BYTES * 2;
   }
-  return /^[A-Za-z0-9_-]+$/.test(value) && value.length >= MESSAGE_ID_BYTES;
+  return new RegExp(`^[A-Za-z0-9_-]{${BASE64URL_MESSAGE_ID_LENGTH}}$`).test(value);
 }
