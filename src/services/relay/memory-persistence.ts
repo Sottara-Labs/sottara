@@ -50,7 +50,11 @@ export class MemoryRelayPersistence implements RelayPersistence {
 
   async dequeue(): Promise<RelayEnvelope | null> {
     if (this.queue.length === 0) return null;
-    return this.queue.shift()!;
+    const envelope = this.queue.shift()!;
+    // Drained = gone: remove from the lookup map so get() stops returning
+    // processed messages and the store cannot grow without bound.
+    this.messages.delete(envelope.messageId);
+    return envelope;
   }
 
   async recordRetry(): Promise<void> {
