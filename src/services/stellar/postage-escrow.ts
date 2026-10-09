@@ -139,6 +139,14 @@ export class PostageEscrowUnavailableError extends Error {
   }
 }
 
+/** A read failure is not evidence that the postage record is absent. */
+export class PostageReadError extends Error {
+  constructor(error: unknown) {
+    super(redactError(`On-chain postage read failed: ${redactError(error)}`));
+    this.name = "PostageReadError";
+  }
+}
+
 export interface PostageEscrowAdapterOptions {
   config: BetaRuntimeConfig;
   managedWallet?: ManagedWalletService;
@@ -215,16 +223,22 @@ export class PostageEscrowAdapter {
   // they never mutate chain state.
   // ------------------------------------------------------------------
 
+  /** Returns null only for PostageNotFound; other failures throw PostageReadError. */
   async readOnChainPostage(messageId: string): Promise<ChainPostage | null> {
     try {
       const client = this.makeClient();
       const result = await chainGet(client, messageIdToBuffer(messageId));
-      if (result.isOk()) return result.unwrap();
-      const code = extractContractError(result.unwrapErr().message);
+      if (result.isOk()) {
+        const postage = result.unwrap();
+        if (!postage) throw new Error("contract returned no postage record");
+        return postage;
+      }
+      const error = new Error(result.unwrapErr().message);
+      const code = extractContractError(error.message);
       if (code === PostageError.PostageNotFound) return null;
-      return null;
-    } catch {
-      return null;
+      throw error;
+    } catch (error: unknown) {
+      throw new PostageReadError(error);
     }
   }
 
@@ -418,14 +432,23 @@ export class PostageEscrowAdapter {
       const lastError = redactError(err);
 
       if (retryClass === "safe") {
-        const chain = await this.readOnChainPostage(messageId);
-        return {
-          success: chain !== undefined,
-          postage: chain ?? undefined,
-          chainStatus: chain ? "confirmed" : live ? "failed" : "not_submitted",
-          retryClassification: "safe",
-          lastError,
-        };
+        try {
+          const chain = await this.readOnChainPostage(messageId);
+          return {
+            success: chain !== null,
+            postage: chain ?? undefined,
+            chainStatus: chain ? "confirmed" : live ? "failed" : "not_submitted",
+            retryClassification: "safe",
+            lastError,
+          };
+        } catch (readError: unknown) {
+          return {
+            success: false,
+            chainStatus: live ? "failed" : "not_submitted",
+            retryClassification: "unknown",
+            lastError: redactError(`${lastError}; ${redactError(readError)}`),
+          };
+        }
       }
 
       return {

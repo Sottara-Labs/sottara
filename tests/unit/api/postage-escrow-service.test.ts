@@ -146,6 +146,65 @@ describe("postage escrow service (BETA-042)", () => {
     expect(result.chainStatus).toBe("confirmed");
   });
 
+  it("persists a failed reconciliation read without claiming absence or confirmation", async () => {
+    const repository = new MemoryApiRepository();
+    await seedPolicy(repository);
+    const syntheticSecret = "S" + "A".repeat(55);
+    const escrow = makeEscrowStub({
+      submitEscrow: async () => ({
+        success: false,
+        chainStatus: "failed",
+        retryClassification: "safe",
+        lastError: "ETIMEDOUT submitting operation",
+      }),
+      readOnChainPostage: async () => {
+        throw new Error(`RPC read unavailable ${syntheticSecret}`);
+      },
+    });
+
+    await expect(
+      submitPostage(contextWithEscrow(repository, escrow), submitInput()),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "chain_error",
+      details: { retryClassification: "unknown", retryable: true, chainStatus: "failed" },
+    });
+    const stored = await getPostage(repository, submitInput().messageId);
+    expect(stored.status).toBe("pending");
+    expect(stored.chainStatus).toBe("failed");
+    expect(stored.retryCount).toBe(1);
+    expect(stored.confirmedAt).toBeUndefined();
+    expect(stored.lastError).toContain("ETIMEDOUT submitting operation");
+    expect(stored.lastError).toContain("RPC read unavailable");
+    expect(stored.lastError).not.toContain(syntheticSecret);
+  });
+
+  it("keeps an explicit missing record distinct from a failed reconciliation read", async () => {
+    const repository = new MemoryApiRepository();
+    await seedPolicy(repository);
+    const escrow = makeEscrowStub({
+      submitEscrow: async () => ({
+        success: false,
+        chainStatus: "failed",
+        retryClassification: "safe",
+        lastError: "ETIMEDOUT submitting operation",
+      }),
+      readOnChainPostage: async () => null,
+    });
+    await expect(
+      submitPostage(contextWithEscrow(repository, escrow), submitInput()),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "chain_error",
+      details: { retryClassification: "safe", retryable: true },
+    });
+    const stored = await getPostage(repository, submitInput().messageId);
+    expect(stored.status).toBe("pending");
+    expect(stored.chainStatus).toBe("failed");
+    expect(stored.retryCount).toBe(1);
+    expect(stored.lastError).toBe("ETIMEDOUT submitting operation");
+  });
+
   it("submit records an allowance shortfall without touching the chain", async () => {
     const repository = new MemoryApiRepository();
     await seedPolicy(repository);

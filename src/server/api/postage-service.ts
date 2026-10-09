@@ -21,6 +21,7 @@ import { validatePostageTransition } from "./postage-transitions";
 import {
   PostageEscrowAdapter,
   mapPostageStatus,
+  redactError,
   type PostageEscrowResult,
   type PostageOperation,
   type RetryClassification,
@@ -435,7 +436,21 @@ async function runOnChainAndSync(
   // safe by the adapter.  We read the chain record and, if terminal, sync it
   // into the DB so subsequent API reads observe the same deterministic state.
   if (chain.retryClassification === "safe") {
-    const chainPostage = await escrow.readOnChainPostage(messageId);
+    let chainPostage: Awaited<ReturnType<PostageEscrowAdapter["readOnChainPostage"]>> = null;
+    try {
+      chainPostage = await escrow.readOnChainPostage(messageId);
+    } catch (readError: unknown) {
+      // Preserve an unknown chain outcome and persist diagnostics through the
+      // existing error path; never promote a failed read to absence or success.
+      chain = {
+        ...chain,
+        retryClassification: "unknown",
+        lastError: redactError(
+          `${chain.lastError ?? "On-chain escrow submission failed"}; ${redactError(readError)}`,
+        ),
+      };
+      basePatch.lastError = chain.lastError;
+    }
     if (chainPostage) {
       const chainReportedStatus = mapPostageStatus(chainPostage);
       if (isTerminal(chainReportedStatus)) {
