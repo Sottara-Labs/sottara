@@ -1,11 +1,36 @@
 // src/features/demo-admin-dashboard/persistence/localStorageAdapter.ts
 export interface StorageAdapter<T> {
   /** Save a value under a given key */
-  save(key: string, value: T): void;
-  /** Load a value by key; returns null if missing or parse error */
-  load(key: string): T | null;
+  save(key: string, value: T): SaveResult;
+  /** Load a value by key; corrupt data is distinct from a missing key. */
+  load(key: string): LoadResult<T>;
   /** Remove a value from storage */
-  clear(key: string): void;
+  clear(key: string): SaveResult;
+}
+
+export type StorageError =
+  | { kind: "quota_exceeded" }
+  | { kind: "parse_error" }
+  | { kind: "storage_error" };
+
+export type SaveResult = { ok: true } | { ok: false; error: StorageError };
+
+export type LoadResult<T> =
+  | { ok: true; value: T | null; missing: boolean }
+  | { ok: false; error: StorageError };
+
+function classifyStorageError(error: unknown, operation: "save" | "load" | "clear"): StorageError {
+  if (
+    operation === "save" &&
+    error instanceof DOMException &&
+    (error.name === "QuotaExceededError" || error.code === 22 || error.code === 1014)
+  ) {
+    return { kind: "quota_exceeded" };
+  }
+  if (operation === "load" && error instanceof SyntaxError) {
+    return { kind: "parse_error" };
+  }
+  return { kind: "storage_error" };
 }
 
 /**
@@ -13,34 +38,47 @@ export interface StorageAdapter<T> {
  * It is generic so it can be reused for any type (e.g., the Draft state).
  */
 export class LocalStorageAdapter<T> implements StorageAdapter<T> {
-  save(key: string, value: T): void {
+  constructor(private readonly providedStorage?: Storage) {}
+
+  private get storage(): Storage {
+    return (
+      this.providedStorage ??
+      (globalThis as typeof globalThis & { localStorage: Storage }).localStorage
+    );
+  }
+
+  save(key: string, value: T): SaveResult {
     try {
       const serialized = JSON.stringify(value);
-      (globalThis as any).localStorage.setItem(key, serialized);
-    } catch (e) {
-      // In a demo context we simply log – production code would surface the error.
-      console.error("LocalStorageAdapter.save error", e);
+      this.storage.setItem(key, serialized);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: classifyStorageError(error, "save") };
     }
   }
 
-  load(key: string): T | null {
+  load(key: string): LoadResult<T> {
     try {
-      const raw = (globalThis as any).localStorage.getItem(key) as string | null;
-      if (raw === null) return null;
-      return JSON.parse(raw) as T;
-    } catch (e) {
-      console.error("LocalStorageAdapter.load error", e);
-      return null;
+      const raw = this.storage.getItem(key);
+      if (raw === null) return { ok: true, value: null, missing: true };
+      return { ok: true, value: JSON.parse(raw) as T, missing: false };
+    } catch (error) {
+      return { ok: false, error: classifyStorageError(error, "load") };
     }
   }
 
-  clear(key: string): void {
+  clear(key: string): SaveResult {
     try {
-      (globalThis as any).localStorage.removeItem(key);
-    } catch (e) {
-      console.error("LocalStorageAdapter.clear error", e);
+      this.storage.removeItem(key);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: classifyStorageError(error, "clear") };
     }
   }
+}
+
+function unwrapLoad<T>(result: LoadResult<T>): T | null {
+  return result.ok ? result.value : null;
 }
 
 // Convenience helpers for Draft state persistence
@@ -58,7 +96,7 @@ export function saveDraft(draft: Draft): void {
 }
 
 export function loadDraft(): Draft | null {
-  return draftAdapter.load(DRAFT_KEY);
+  return unwrapLoad(draftAdapter.load(DRAFT_KEY));
 }
 
 export function clearDraft(): void {
@@ -74,7 +112,7 @@ export function saveDraftDataset(dataset: Draft[]): void {
 }
 
 export function loadDraftDataset(): Draft[] | null {
-  return datasetAdapter.load(DATASET_KEY);
+  return unwrapLoad(datasetAdapter.load(DATASET_KEY));
 }
 
 export function clearDraftDataset(): void {
@@ -90,7 +128,7 @@ export function saveCampaignSnapshots(snapshots: CampaignSnapshot[]): void {
 }
 
 export function loadCampaignSnapshots(): CampaignSnapshot[] {
-  const loaded = snapshotAdapter.load(SNAPSHOTS_KEY);
+  const loaded = unwrapLoad(snapshotAdapter.load(SNAPSHOTS_KEY));
   if (loaded === null) {
     return defaultCampaignSnapshots;
   }
@@ -110,7 +148,7 @@ export function saveCampaignTags(tags: CampaignTag[]): void {
 }
 
 export function loadCampaignTags(): CampaignTag[] {
-  const loaded = tagAdapter.load(TAGS_KEY);
+  const loaded = unwrapLoad(tagAdapter.load(TAGS_KEY));
   if (loaded === null) {
     return defaultCampaignTags;
   }
@@ -132,7 +170,7 @@ export function saveSegmentEditorState(state: SegmentEditorState): void {
 }
 
 export function loadSegmentEditorState(): SegmentEditorState | null {
-  return segmentEditorAdapter.load(SEGMENT_EDITOR_KEY);
+  return unwrapLoad(segmentEditorAdapter.load(SEGMENT_EDITOR_KEY));
 }
 
 export function clearSegmentEditorState(): void {
@@ -150,7 +188,7 @@ export function saveAssignments(state: AssignmentState): void {
 }
 
 export function loadAssignments(): AssignmentState | null {
-  return assignmentsAdapter.load(ASSIGNMENTS_KEY);
+  return unwrapLoad(assignmentsAdapter.load(ASSIGNMENTS_KEY));
 }
 
 export function clearAssignments(): void {

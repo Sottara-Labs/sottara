@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { saveDraft, loadDraft, clearDraft } from "../persistence/localStorageAdapter";
+import {
+  LocalStorageAdapter,
+  saveDraft,
+  loadDraft,
+  clearDraft,
+} from "../persistence/localStorageAdapter";
 import { Draft } from "../types/draft";
 
 const mockStorage = (() => {
@@ -79,6 +84,38 @@ describe("localStorageAdapter", () => {
     // After clearing, loadDraft should return null
     const afterClear = loadDraft();
     expect(afterClear).toBeNull();
+  });
+
+  it("returns a typed failure when storage quota is exceeded", () => {
+    const throwingStorage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new DOMException("quota", "QuotaExceededError");
+      },
+      removeItem: () => undefined,
+    } as unknown as Storage;
+    const adapter = new LocalStorageAdapter<Draft>(throwingStorage);
+
+    expect(adapter.save("draft", draft)).toEqual({
+      ok: false,
+      error: { kind: "quota_exceeded" },
+    });
+  });
+
+  it("distinguishes corrupted JSON from a missing key", () => {
+    const values = new Map<string, string>([["corrupt", "{not-json"]]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    } as unknown as Storage;
+    const adapter = new LocalStorageAdapter<Draft>(storage);
+
+    expect(adapter.load("corrupt")).toEqual({
+      ok: false,
+      error: { kind: "parse_error" },
+    });
+    expect(adapter.load("missing")).toEqual({ ok: true, value: null, missing: true });
   });
 });
 
