@@ -51,7 +51,7 @@ export function createQuarantineRecord(
 
   if (error !== null && typeof error === "object") {
     const code = (error as { code?: unknown }).code;
-    const msg = (error as { message?: string }).message ?? "";
+    const msg = ((error as { message?: string }).message ?? "").toLowerCase();
 
     if (code === "crypto_version_error" || msg.includes("version")) {
       reasonCode = "version_error";
@@ -75,6 +75,10 @@ export function createQuarantineRecord(
         userDetail =
           "The content commitment or MAC tag failed verification. Possible tampering detected.";
       }
+    } else if (msg.includes("recipient binding")) {
+      reasonCode = "recipient_mismatch";
+      userHeadline = "Recipient Binding Mismatch";
+      userDetail = "This envelope was addressed to a different recipient key binding.";
     } else if (
       code === "crypto_decryption_error" ||
       msg.includes("decryption") ||
@@ -83,10 +87,6 @@ export function createQuarantineRecord(
       reasonCode = "decryption_error";
       userHeadline = "Decryption Key Unavailable";
       userDetail = "The payload could not be decrypted with your recipient key.";
-    } else if (msg.includes("recipient binding")) {
-      reasonCode = "recipient_mismatch";
-      userHeadline = "Recipient Binding Mismatch";
-      userDetail = "This envelope was addressed to a different recipient key binding.";
     } else if (msg.includes("timestamp")) {
       reasonCode = "timestamp_error";
       userHeadline = "Timestamp Out of Bounds";
