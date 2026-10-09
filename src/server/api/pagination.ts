@@ -12,6 +12,7 @@ import { ApiError } from "./errors";
  */
 
 const CURSOR_VERSION = 1;
+const CLOCK_SKEW_MS = 60_000;
 const SECRET = () => {
   const secret = process.env.STEALTH_CURSOR_SECRET ?? "";
   return secret;
@@ -94,6 +95,9 @@ export function decodeCursor(
     throw new ApiError(400, "bad_request", "Invalid pagination cursor");
   }
   const [versionStr, signature, encoded] = parts;
+  if (!/^\d+$/.test(versionStr)) {
+    throw new ApiError(400, "bad_request", "Unsupported pagination cursor version");
+  }
   const version = Number(versionStr);
   if (!Number.isInteger(version) || version !== CURSOR_VERSION) {
     throw new ApiError(400, "bad_request", "Unsupported pagination cursor version");
@@ -121,19 +125,12 @@ export function decodeCursor(
     throw new ApiError(400, "bad_request", "Pagination cursor scope does not match this query");
   }
 
-  if (options?.maxAgeMs !== undefined) {
-    const now = options.now ?? Date.now();
-    if (payload.iat !== undefined) {
-      if (now - payload.iat > options.maxAgeMs || payload.iat > now + 60_000) {
-        throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
-      }
-    } else {
-      // Legacy cursor without iat: if continuationKey is an ISO timestamp, check that
-      const parsedTime = Date.parse(payload.key);
-      if (!Number.isNaN(parsedTime) && now - parsedTime > options.maxAgeMs) {
-        throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
-      }
-    }
+  const now = options?.now ?? Date.now();
+  if (!Number.isInteger(payload.iat) || payload.iat > now + CLOCK_SKEW_MS) {
+    throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
+  }
+  if (options?.maxAgeMs !== undefined && now - payload.iat > options.maxAgeMs) {
+    throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
   }
 
   return { continuationKey: payload.key, issuedAt: payload.iat };
