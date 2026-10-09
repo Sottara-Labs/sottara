@@ -117,6 +117,21 @@ describe("validateSenderRule", () => {
     expect(validateSenderRule(owner, owner, "block")).toBe("You cannot block your own address.");
   });
 
+  it("blocks a lowercase copy of the owner address", () => {
+    expect(validateSenderRule(owner, owner.toLowerCase(), "block")).toBe(
+      "You cannot block your own address.",
+    );
+  });
+
+  it("blocks whitespace-padded owner and sender addresses", () => {
+    expect(validateSenderRule(`  ${owner}  `, owner, "block")).toBe(
+      "You cannot block your own address.",
+    );
+    expect(validateSenderRule(owner, `  ${owner}  `, "block")).toBe(
+      "You cannot block your own address.",
+    );
+  });
+
   it("allows blocking a different sender", () => {
     const sender = `G${"B".repeat(55)}`;
     expect(validateSenderRule(owner, sender, "block")).toBeNull();

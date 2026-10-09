@@ -61,7 +61,7 @@ export function computeDirtyFields(draft: MailboxPolicy, live: MailboxPolicy): s
  * Returns an error message or null.
  */
 export function validateSenderRule(owner: string, sender: string, rule: SenderRule): string | null {
-  if (rule === "block" && sender === owner) {
+  if (rule === "block" && owner.trim().toUpperCase() === sender.trim().toUpperCase()) {
     return "You cannot block your own address.";
   }
   return null;
