@@ -156,6 +156,7 @@ describe("postage escrow service (BETA-042)", () => {
         allowance: "0",
         balance: "0",
         required: "125",
+        status: "insufficient" as const,
       }),
       submitEscrow: submitSpy,
     });
@@ -167,6 +168,26 @@ describe("postage escrow service (BETA-042)", () => {
     expect(result.chainStatus).toBe("failed");
     expect(result.retryCount).toBe(1);
     expect(result.lastError).toContain("Insufficient balance/allowance");
+  });
+
+  it("continues to the chain when the allowance preflight is unknown", async () => {
+    const repository = new MemoryApiRepository();
+    await seedPolicy(repository);
+    const submitSpy = vi.fn(async () => confirmed(PostageStatus.Pending));
+    const escrow = makeEscrowStub({
+      checkAllowanceAndBalance: async () => ({
+        sufficient: false,
+        required: "125",
+        status: "unknown" as const,
+        lastError: "RPC unavailable",
+      }),
+      submitEscrow: submitSpy,
+    });
+
+    const result = await submitPostage(contextWithEscrow(repository, escrow), submitInput());
+
+    expect(submitSpy).toHaveBeenCalledOnce();
+    expect(result.chainStatus).toBe("confirmed");
   });
 
   it("settle advances a pending record once the chain confirms settlement", async () => {

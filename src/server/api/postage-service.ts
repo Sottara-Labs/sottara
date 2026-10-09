@@ -735,7 +735,7 @@ export async function submitPostage(
     try {
       const amount = BigInt(input.amount);
       const allowance = await context.escrow.checkAllowanceAndBalance(input.sender, amount);
-      if (!allowance.sufficient) {
+      if (allowance.status !== "unknown" && !allowance.sufficient) {
         return syncEscrowFields(context.repository, input.messageId, {
           chainStatus: "failed",
           retryCount: 1,
