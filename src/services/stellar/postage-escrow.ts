@@ -455,9 +455,9 @@ export class PostageEscrowAdapter {
         const status = res.status;
         if (status === "SUCCESS") {
           const ledger = res.ledgers?.[0]?.sequence ?? (Number(res.ledger) || 0);
-          const resultMeta = (res as any).resultMetaXdr;
+          // Postage is resolved from the on-chain record. (The former
+          // extractPostageFromResult stub always returned undefined.)
           const postage =
-            this.extractPostageFromResult(resultMeta, operation) ??
             (await this.readOnChainPostage(messageId)) ??
             undefined;
           return {
@@ -478,13 +478,6 @@ export class PostageEscrowAdapter {
       await this.sleep(sleepMs);
     }
     return null;
-  }
-
-  private extractPostageFromResult(
-    _resultMeta: string | undefined,
-    _operation: PostageOperation,
-  ): ChainPostage | undefined {
-    return undefined;
   }
 
   private sleep(ms: number): Promise<void> {
@@ -627,3 +620,4 @@ export class PostageEscrowAdapter {
 export function mapPostageStatus(chain: ChainPostage): PostageStatus {
   return chainStatusToDomain(chain.status);
 }
+
