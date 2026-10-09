@@ -2,7 +2,8 @@
  * In-memory relay persistence (Issue #1935 BETA-028).
  *
  * Used by the Docker entry and development builds. Not durable across restarts;
- * the Cloudflare deployment uses {@link KvRelayPersistence} instead.
+ * the Cloudflare deployment uses {@link KvRelayPersistence} instead. The map
+ * contains active messages only; dequeue removes drained messages from it.
  */
 import type { RelayEnvelope, RelayPersistence } from "./persistence";
 
@@ -50,7 +51,9 @@ export class MemoryRelayPersistence implements RelayPersistence {
 
   async dequeue(): Promise<RelayEnvelope | null> {
     if (this.queue.length === 0) return null;
-    return this.queue.shift()!;
+    const envelope = this.queue.shift()!;
+    this.messages.delete(envelope.messageId);
+    return envelope;
   }
 
   async recordRetry(): Promise<void> {
