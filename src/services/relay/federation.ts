@@ -79,7 +79,13 @@ export class FederationDeliveryService {
   private readonly MAX_RETRIES = 5;
   private readonly BASE_BACKOFF_MS = 1000;
 
-  // In-memory duplicate tracking (in a real system, this is backed by Redis/DB)
+  /**
+   * Recent-message dedupe window for this worker.
+   * A bounded FIFO keeps memory usage predictable; the oldest id is evicted
+   * first when the window is full. Durable cross-worker dedupe belongs in the
+   * backing Redis/DB store described by the service contract.
+   */
+  private static readonly MAX_DEDUPE_IDS = 10_000;
   private seenMessageIds: Set<string> = new Set();
   // Simulated dead-letter queue
   public deadLetterQueue: Array<{
@@ -94,6 +100,17 @@ export class FederationDeliveryService {
       message: FederationMessage,
     ) => Promise<{ status: number }>,
   ) {}
+
+  private rememberMessageId(messageId: string): void {
+    if (this.seenMessageIds.has(messageId)) return;
+
+    if (this.seenMessageIds.size >= FederationDeliveryService.MAX_DEDUPE_IDS) {
+      const oldest = this.seenMessageIds.values().next().value;
+      if (oldest !== undefined) this.seenMessageIds.delete(oldest);
+    }
+
+    this.seenMessageIds.add(messageId);
+  }
 
   /**
    * Main delivery loop implementing the state machine and retries.
@@ -134,11 +151,11 @@ export class FederationDeliveryService {
 
           if (response.status >= 200 && response.status < 300) {
             state = "ACKNOWLEDGED";
-            this.seenMessageIds.add(message.id);
+            this.rememberMessageId(message.id);
           } else if (response.status === 409) {
             // Conflict implies already exists -> deduplication
             state = "DEDUPLICATED";
-            this.seenMessageIds.add(message.id);
+            this.rememberMessageId(message.id);
           } else if (response.status >= 400 && response.status < 500) {
             const code =
               response.status === 401 || response.status === 403
