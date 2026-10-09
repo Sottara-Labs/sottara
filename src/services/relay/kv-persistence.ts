@@ -15,7 +15,10 @@ export class KvRelayPersistence implements RelayPersistence {
   private static readonly DEAD_LETTER_KEY = "relay:dead-letter";
   private static readonly MESSAGE_PREFIX = "relay:message:";
 
-  constructor(private readonly kv: KVNamespace) {}
+  constructor(
+    private readonly kv: KVNamespace,
+    private readonly coordinator?: DurableObjectNamespace,
+  ) {}
 
   async ping(): Promise<void> {
     await this.kv.get(KvRelayPersistence.PING_KEY, "text");
@@ -47,8 +50,7 @@ export class KvRelayPersistence implements RelayPersistence {
       `${KvRelayPersistence.MESSAGE_PREFIX}${envelope.messageId}`,
       JSON.stringify(envelope),
     );
-    const depth = await this.getQueueDepth();
-    await this.kv.put(KvRelayPersistence.QUEUE_DEPTH_KEY, String(depth + 1));
+    await this.incrementCounter(KvRelayPersistence.QUEUE_DEPTH_KEY);
     return { messageId: envelope.messageId };
   }
 
@@ -79,13 +81,33 @@ export class KvRelayPersistence implements RelayPersistence {
   }
 
   private async readCounter(key: string): Promise<number> {
+    if (this.coordinator) {
+      const stub = this.getCounterStub();
+      const legacyValue = await this.readKvCounter(key);
+      return stub.getRelayCounter(key, legacyValue);
+    }
+    return this.readKvCounter(key);
+  }
+
+  private async readKvCounter(key: string): Promise<number> {
     const raw = await this.kv.get(key, "text");
     const value = raw === null ? 0 : Number(raw);
     return Number.isFinite(value) && value >= 0 ? value : 0;
   }
 
-  private async incrementCounter(key: string): Promise<void> {
-    const value = await this.readCounter(key);
-    await this.kv.put(key, String(value + 1));
+  private getCounterStub(): any {
+    const id = this.coordinator!.idFromName("relay-counters");
+    return this.coordinator!.get(id);
+  }
+
+  private async incrementCounter(key: string): Promise<number> {
+    if (this.coordinator) {
+      const legacyValue = await this.readKvCounter(key);
+      return this.getCounterStub().incrementRelayCounter(key, legacyValue);
+    }
+    const value = await this.readKvCounter(key);
+    const next = value + 1;
+    await this.kv.put(key, String(next));
+    return next;
   }
 }
