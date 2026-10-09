@@ -79,6 +79,38 @@ export interface PostageClientOptions {
   signer?: string;
 }
 
+type PostageResult<T> = contract.Ok<T> | contract.Err<{ message: string }>;
+type PostageTransaction<T> = contract.AssembledTransaction<PostageResult<T>>;
+
+/** Typed contract surface generated from the Postage contract spec. */
+export interface PostageContractClient extends contract.Client {
+  initialize(args: {
+    asset: string;
+    treasury: string;
+    minimum: bigint;
+    fee_bps: number;
+    expiry_seconds: bigint;
+    dispute_seconds: bigint;
+  }): Promise<PostageTransaction<void>>;
+  configure_guard(args: { guard: string }): Promise<PostageTransaction<void>>;
+  guard(args: Record<string, never>): Promise<PostageTransaction<string>>;
+  config(args: Record<string, never>): Promise<PostageTransaction<EscrowConfig>>;
+  minimum(args: Record<string, never>): Promise<PostageTransaction<bigint>>;
+  quote(args: { sender_trusted: boolean }): Promise<PostageTransaction<bigint>>;
+  submit(args: {
+    message_id: Buffer;
+    sender: string;
+    recipient: string;
+    amount: bigint;
+  }): Promise<PostageTransaction<Postage>>;
+  settle(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+  refund(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+  dispute(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+  expire(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+  reclaim(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+  get(args: { message_id: Buffer }): Promise<PostageTransaction<Postage>>;
+}
+
 /** Map a contract error code to an actionable PostageError variant. */
 export function parsePostageError(code: number): PostageError | undefined {
   return Object.values(PostageError).includes(code as PostageError)
@@ -87,7 +119,7 @@ export function parsePostageError(code: number): PostageError | undefined {
 }
 
 /** Typed Soroban contract client for the Postage contract. */
-export function createPostageClient(opts: PostageClientOptions): contract.Client {
+export function createPostageClient(opts: PostageClientOptions): PostageContractClient {
   return new contract.Client(new contract.Spec(SPEC_ENTRIES), {
     contractId: opts.contractId,
     networkPassphrase: opts.networkPassphrase,
@@ -107,7 +139,7 @@ export function createPostageClient(opts: PostageClientOptions): contract.Client
           },
         }
       : {}),
-  });
+  }) as PostageContractClient;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +150,7 @@ export function createPostageClient(opts: PostageClientOptions): contract.Client
 // ---------------------------------------------------------------------------
 
 export async function initialize(
-  client: contract.Client,
+  client: PostageContractClient,
   asset: string,
   treasury: string,
   minimum: bigint,
@@ -126,7 +158,7 @@ export async function initialize(
   expiry_seconds: bigint,
   dispute_seconds: bigint,
 ): Promise<contract.Ok<void> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).initialize({
+  const tx = await client.initialize({
     asset,
     treasury,
     minimum,
@@ -138,97 +170,97 @@ export async function initialize(
 }
 
 export async function configureGuard(
-  client: contract.Client,
+  client: PostageContractClient,
   guard: string,
 ): Promise<contract.Ok<void> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).configure_guard({ guard });
+  const tx = await client.configure_guard({ guard });
   return tx.result;
 }
 
 export async function guard(
-  client: contract.Client,
+  client: PostageContractClient,
 ): Promise<contract.Ok<string> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).guard({});
+  const tx = await client.guard({});
   return tx.result;
 }
 
 export async function config(
-  client: contract.Client,
+  client: PostageContractClient,
 ): Promise<contract.Ok<EscrowConfig> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).config({});
+  const tx = await client.config({});
   return tx.result;
 }
 
 export async function minimum(
-  client: contract.Client,
+  client: PostageContractClient,
 ): Promise<contract.Ok<bigint> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).minimum({});
+  const tx = await client.minimum({});
   return tx.result;
 }
 
 export async function quote(
-  client: contract.Client,
+  client: PostageContractClient,
   sender_trusted: boolean,
 ): Promise<contract.Ok<bigint> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).quote({ sender_trusted });
+  const tx = await client.quote({ sender_trusted });
   return tx.result;
 }
 
 export async function submit(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
   sender: string,
   recipient: string,
   amount: bigint,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).submit({ message_id, sender, recipient, amount });
+  const tx = await client.submit({ message_id, sender, recipient, amount });
   return tx.result;
 }
 
 export async function settle(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).settle({ message_id });
+  const tx = await client.settle({ message_id });
   return tx.result;
 }
 
 export async function refund(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).refund({ message_id });
+  const tx = await client.refund({ message_id });
   return tx.result;
 }
 
 export async function dispute(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).dispute({ message_id });
+  const tx = await client.dispute({ message_id });
   return tx.result;
 }
 
 export async function expire(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).expire({ message_id });
+  const tx = await client.expire({ message_id });
   return tx.result;
 }
 
 export async function reclaim(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).reclaim({ message_id });
+  const tx = await client.reclaim({ message_id });
   return tx.result;
 }
 
 export async function get(
-  client: contract.Client,
+  client: PostageContractClient,
   message_id: Buffer,
 ): Promise<contract.Ok<Postage> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).get({ message_id });
+  const tx = await client.get({ message_id });
   return tx.result;
 }
