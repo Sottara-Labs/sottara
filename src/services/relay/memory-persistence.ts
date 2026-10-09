@@ -50,7 +50,9 @@ export class MemoryRelayPersistence implements RelayPersistence {
 
   async dequeue(): Promise<RelayEnvelope | null> {
     if (this.queue.length === 0) return null;
-    return this.queue.shift()!;
+    const envelope = this.queue.shift()!;
+    this.messages.delete(envelope.messageId);
+    return envelope;
   }
 
   async recordRetry(): Promise<void> {
