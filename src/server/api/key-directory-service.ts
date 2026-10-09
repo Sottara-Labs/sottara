@@ -1,6 +1,7 @@
 import { ApiError } from "./errors";
 import type { ApiRepository } from "./repository";
 import type { KeyDirectoryRecord, PublishedKey } from "./domain";
+import { generateMessageId } from "../../services/crypto/random";
 import {
   buildKeyPublicationSigningPayload,
   verifyKeyPublicationSignature,
@@ -40,6 +41,11 @@ function assertNoPrivateKeyMaterial(publicKey: string, metadata?: Record<string,
   }
 }
 
+/** CSPRNG-backed default id for a published key; caller-provided ids still win. */
+function generateKeyId(): string {
+  return `k_${generateMessageId("hex")}`;
+}
+
 /**
  * Publishes a new signed public key into an account's key directory.
  */
@@ -60,7 +66,7 @@ export async function publishKey(
 
   const dir = await repository.getKeyDirectory(normalizedOwner);
   const nextVersion = dir ? dir.keys.length + 1 : 1;
-  const keyId = request.keyId || `k_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const keyId = request.keyId || generateKeyId();
 
   // Verify signature unless explicitly in bypass mode for testing
   if (!options.bypassSignatureCheck) {
@@ -161,8 +167,7 @@ export async function rotateKey(
 
   const now = new Date();
   const nextVersion = currentKey.version + 1;
-  const newKeyId =
-    request.newKey.keyId || `k_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const newKeyId = request.newKey.keyId || generateKeyId();
   const notBefore = request.newKey.notBefore ?? now.toISOString();
   const notAfter =
     request.newKey.notAfter ?? new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString();

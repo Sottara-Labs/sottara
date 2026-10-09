@@ -88,6 +88,31 @@ describe("BETA-027 (Issue #1934): Versioned Public Key Directory and Rotation AP
       expect(dir.allKeys).toHaveLength(1);
     });
 
+    it("generates unique CSPRNG-backed ids when the client omits keyId", async () => {
+      const generatedIds = new Set<string>();
+      const publicKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+      for (let index = 0; index < 100; index += 1) {
+        const published = await publishKey(
+          repository,
+          aliceAddress,
+          {
+            algorithm: "x25519",
+            purpose: "encryption",
+            publicKey,
+            signature: "dummy",
+          },
+          { bypassSignatureCheck: true },
+        );
+        generatedIds.add(published.keyId);
+      }
+
+      expect(generatedIds).toHaveLength(100);
+      for (const keyId of generatedIds) {
+        expect(keyId).toMatch(/^k_[0-9a-f]{32}$/);
+      }
+    });
+
     it("rejects publication with invalid or forged signature", async () => {
       const keyId = "k_forged_1";
       const notBefore = new Date().toISOString();
