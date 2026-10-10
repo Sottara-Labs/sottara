@@ -66,6 +66,20 @@ describe("BETA-088 release-gate summary", () => {
     expect(isReleasable(items)).toBe(false);
   });
 
+  it("fails the overall verdict when a PR-scoped gate like governance fails", () => {
+    const items = [
+      ...passingRequiredGates(),
+      {
+        gateId: "governance",
+        name: "Governance Checks",
+        owner: "platform/release",
+        dependency: "BETA-088",
+        status: "fail",
+      },
+    ];
+    expect(overallVerdict(items)).toBe("fail");
+  });
+
   it("never passes an empty result set", () => {
     expect(overallVerdict([])).toBe("fail");
     expect(isReleasable([])).toBe(false);
