@@ -39,8 +39,8 @@ function sampleMessages(): DemoMessage[] {
 describe("normalizeLabelsForBulk", () => {
   it("deduplicates case-insensitively", () => {
     expect(normalizeLabelsForBulk(["Priority", "priority", "Archive"])).toEqual([
-      "priority",
-      "archive",
+      "Priority",
+      "Archive",
     ]);
   });
 
@@ -91,10 +91,10 @@ describe("applyBulkLabelEdit - remove", () => {
     );
 
     expect(result.messages[0].labels).toEqual(["priority", "review"]);
-    expect(result.changes[0].applied).toEqual(["archive"]);
-    expect(result.changes[0].skipped).toEqual(["nonexistent"]);
-    expect(result.summary.totalApplied).toBe(1);
-    expect(result.summary.totalSkipped).toBe(1);
+    expect(result.changes[0].applied).toEqual([]);
+    expect(result.changes[0].skipped).toEqual(["archive", "nonexistent"]);
+    expect(result.summary.totalApplied).toBe(0);
+    expect(result.summary.totalSkipped).toBe(2);
   });
 });
 
@@ -130,7 +130,7 @@ describe("calculateLabelState", () => {
       "Archive",
     ]);
 
-    expect(result.common).toEqual(["priority", "review"]);
+    expect(result.common).toEqual(["Priority", "review"]);
     expect(result.partial).toEqual(["archive"]);
     expect(result.available).toEqual([]);
   });

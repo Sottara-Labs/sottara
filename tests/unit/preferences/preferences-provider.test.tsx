@@ -21,7 +21,7 @@ function Page({ name }: { name: string }) {
 }
 
 beforeEach(() => {
-  localStorage.clear();
+  window.localStorage.clear();
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })),
@@ -60,7 +60,7 @@ describe("app-wide preferences", () => {
   });
 
   it("restores the saved light theme outside the inbox", async () => {
-    localStorage.setItem("stealth-ui-preferences", JSON.stringify({ theme: "light" }));
+    window.localStorage.setItem("stealth-ui-preferences", JSON.stringify({ theme: "light" }));
     render(
       <PreferencesProvider>
         <Page name="Sign in" />
@@ -86,6 +86,6 @@ describe("app-wide preferences", () => {
       </PreferencesProvider>,
     );
     expect(screen.getByText("Calendar: light")).toBeTruthy();
-    expect(JSON.parse(localStorage.getItem("stealth-ui-preferences")!).theme).toBe("light");
+    expect(JSON.parse(window.localStorage.getItem("stealth-ui-preferences")!).theme).toBe("light");
   });
 });
