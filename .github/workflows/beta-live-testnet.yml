@@ -58,6 +58,12 @@ jobs:
           toolchain: stable
           targets: wasm32v1-none
 
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: contracts/soroban
+          key: soroban-live-${{ hashFiles('contracts/soroban/**/Cargo.lock') }}
+
       - name: Install Stellar CLI
         run: curl -sSfL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-linux-x64.tar.gz | tar -xz -C /usr/local/bin
 
