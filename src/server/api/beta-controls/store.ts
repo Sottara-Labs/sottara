@@ -1,3 +1,4 @@
+import { generateMessageId } from "../../../services/crypto/random";
 import { ApiError } from "../errors";
 import {
   type BetaCapability,
@@ -75,6 +76,10 @@ function genId(prefix: string) {
 
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   const rand = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  const rand =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : generateMessageId();
   return `${prefix}_${rand}`;
 }
 
@@ -207,7 +212,6 @@ export class BetaControlStore {
         reason: opts.reason,
         version: (existing?.version ?? 0) + 1,
       };
-      this.killSwitches.set(capability, record);
       this.appendAudit({
         actor: opts.actor,
         action: "killswitch.set",
@@ -218,6 +222,7 @@ export class BetaControlStore {
         requestId: opts.requestId,
         result: "success",
       });
+      this.killSwitches.set(capability, record);
       await this.persist();
       return record;
     });
@@ -236,7 +241,6 @@ export class BetaControlStore {
   upsertFlag(flag: FeatureFlag): Promise<FeatureFlag> {
     return this.runExclusive(async () => {
       const parsed = featureFlagSchema.parse(flag);
-      this.flags.set(parsed.key, parsed);
       this.appendAudit({
         actor: parsed.createdBy,
         action: "flag.upsert",
@@ -245,6 +249,7 @@ export class BetaControlStore {
         after: { key: parsed.key, enabled: parsed.enabled, version: parsed.version },
         result: "success",
       });
+      this.flags.set(parsed.key, parsed);
       await this.persist();
       return parsed;
     });
@@ -254,7 +259,6 @@ export class BetaControlStore {
     return this.runExclusive(async () => {
       if (!this.flags.has(key))
         throw new ApiError(404, "not_found", `Feature flag '${key}' not found`);
-      this.flags.delete(key);
       this.appendAudit({
         actor,
         action: "flag.delete",
@@ -262,6 +266,7 @@ export class BetaControlStore {
         result: "success",
         requestId,
       });
+      this.flags.delete(key);
       await this.persist();
     });
   }
@@ -295,7 +300,6 @@ export class BetaControlStore {
         }
       }
       const isNew = !this.cohorts.has(parsed.id);
-      this.cohorts.set(parsed.id, parsed);
       this.appendAudit({
         actor: parsed.createdBy,
         action: isNew ? "cohort.create" : "cohort.update",
@@ -303,6 +307,7 @@ export class BetaControlStore {
         after: { id: parsed.id, name: parsed.name, version: parsed.version },
         result: "success",
       });
+      this.cohorts.set(parsed.id, parsed);
       await this.persist();
       return parsed;
     });
@@ -311,7 +316,6 @@ export class BetaControlStore {
   deleteCohort(id: string, actor: string, requestId?: string): Promise<void> {
     return this.runExclusive(async () => {
       if (!this.cohorts.has(id)) throw new ApiError(404, "not_found", `Cohort '${id}' not found`);
-      this.cohorts.delete(id);
       this.appendAudit({
         actor,
         action: "cohort.delete",
@@ -319,6 +323,7 @@ export class BetaControlStore {
         result: "success",
         requestId,
       });
+      this.cohorts.delete(id);
       await this.persist();
     });
   }
@@ -374,7 +379,6 @@ export class BetaControlStore {
         version: 1,
       };
       const parsed = betaInviteSchema.parse(invite);
-      this.invites.set(parsed.code, parsed);
       this.appendAudit({
         actor: input.createdBy,
         action: "invite.create",
@@ -382,6 +386,7 @@ export class BetaControlStore {
         after: { code: parsed.code, cohortId: parsed.cohortId },
         result: "success",
       });
+      this.invites.set(parsed.code, parsed);
       await this.persist();
       return parsed;
     });
@@ -406,7 +411,6 @@ export class BetaControlStore {
         usedAt: nowIso(),
         version: existing.version + 1,
       };
-      this.invites.set(updated.code, updated);
       this.appendAudit({
         actor: account,
         action: "invite.redeem",
@@ -414,6 +418,7 @@ export class BetaControlStore {
         after: { code: updated.code, usedBy: account },
         result: "success",
       });
+      this.invites.set(updated.code, updated);
       await this.persist();
       return updated;
     });
@@ -429,7 +434,6 @@ export class BetaControlStore {
       const existing = this.invites.get(code.toUpperCase());
       if (!existing) throw new ApiError(404, "not_found", `Invite code '${code}' not found`);
       const updated: BetaInvite = { ...existing, status: "revoked", version: existing.version + 1 };
-      this.invites.set(updated.code, updated);
       this.appendAudit({
         actor,
         action: "invite.revoke",
@@ -438,6 +442,7 @@ export class BetaControlStore {
         result: "success",
         requestId,
       });
+      this.invites.set(updated.code, updated);
       await this.persist();
       return updated;
     });
@@ -461,7 +466,6 @@ export class BetaControlStore {
         usedAt: null,
         version: existing.version + 1,
       };
-      this.invites.set(updated.code, updated);
       this.appendAudit({
         actor,
         action: "invite.release",
@@ -469,6 +473,7 @@ export class BetaControlStore {
         after: { code: updated.code, status: updated.status },
         result: "success",
       });
+      this.invites.set(updated.code, updated);
       await this.persist();
       return updated;
     });
