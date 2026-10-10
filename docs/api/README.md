@@ -4,7 +4,7 @@ The TanStack Start worker exposes versioned endpoints under `/api/v1`.
 
 ## Endpoint groups
 
-- Operations: `GET /health`, `GET /health?check=readiness`, `GET /protocol`, `GET /openapi.json`
+- Operations: `GET /api/v1/health`, `GET /api/v1/health?check=readiness`, `GET /api/v1/protocol`, `GET /api/v1/openapi.json`
 - Policy: read or replace mailbox defaults, manage sender overrides, and evaluate admission
 - Postage: quote, submit, retrieve, settle, and refund message postage
 - Receipts: record delivery, retrieve participant state, and acknowledge reads
