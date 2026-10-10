@@ -139,17 +139,20 @@ export class IdentityResolverService {
   private readonly maxCacheSize: number;
   private readonly defaultPositiveTtlMs: number;
   private readonly defaultNegativeTtlMs: number;
+  private readonly defaultRepository?: IdentityRepositoryAdapter;
 
   constructor(
     options: {
       maxCacheSize?: number;
       positiveTtlMs?: number;
       negativeTtlMs?: number;
+      repository?: IdentityRepositoryAdapter;
     } = {},
   ) {
     this.maxCacheSize = options.maxCacheSize ?? 1000;
     this.defaultPositiveTtlMs = options.positiveTtlMs ?? 5 * 60 * 1000; // 5 minutes
     this.defaultNegativeTtlMs = options.negativeTtlMs ?? 30 * 1000; // 30 seconds
+    this.defaultRepository = options.repository;
   }
 
   /**
@@ -324,7 +327,7 @@ export class IdentityResolverService {
     options: ResolverOptions,
     signal: AbortSignal,
   ): Promise<ResolvedIdentity> {
-    const repository = options.repository ?? (globalThis as any).__stealthApiRepository;
+    const repository = options.repository ?? this.defaultRepository;
 
     switch (parsed.type) {
       case "stellar_address":
