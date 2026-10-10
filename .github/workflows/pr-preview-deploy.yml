@@ -2,20 +2,20 @@ name: PR Preview Deploy
 on:
   pull_request:
     branches:
-    - main
-    - develop
+      - main
+      - develop
     types:
-    - opened
-    - synchronize
-    - reopened
-    - closed
+      - opened
+      - synchronize
+      - reopened
+      - closed
 permissions:
   contents: read
   pull-requests: write
   deployments: write
 env:
   BUN_VERSION: 1.3.14
-  NODE_VERSION: '24'
+  NODE_VERSION: "24"
   IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository
     }}
 concurrency:
@@ -25,108 +25,113 @@ jobs:
   preview-build:
     name: Build & Validate Preview
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-    - name: Setup Node
-      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-      with:
-        bun-version: ${{ env.BUN_VERSION }}
-    - name: Install dependencies
-      run: bun install --frozen-lockfile
-    - name: Verify no production secrets available
-      run: "# Verify preview environment has NO production secrets\nif [ -n \"$STEALTH_CURSOR_SECRET\"\
-        \ ] && [ \"$STEALTH_CURSOR_SECRET\" != \"\" ]; then\n  echo \"ERROR: Production\
-        \ secret STEALTH_CURSOR_SECRET is available in preview environment\"\n  echo\
-        \ \"This is a security violation — preview deployments must not have production\
-        \ secrets\"\n  exit 1\nfi\necho \"✓ Preview environment verified: no production\
-        \ secrets available\"\n"
-    - name: Build client
-      run: bun run build
-    - name: Validate build output
-      run: "# Verify the Cloudflare Vite plugin compiled the worker\nif [ ! -f \"\
-        dist/server/wrangler.json\" ]; then\n  echo \"ERROR: dist/server/wrangler.json\
-        \ not found after build\"\n  echo \"The Cloudflare Vite plugin may not have\
-        \ compiled the worker\"\n  exit 1\nfi\necho \"✓ Build output validated\"\n"
-    - name: Deploy preview (non-fork only)
-      if: env.IS_FORK != 'true' && env.CLOUDFLARE_API_TOKEN != ''
-      run: "# Deploy using the Vite-compiled worker output\n# The Vite plugin writes\
-        \ dist/server/wrangler.json with the compiled worker\nnpx wrangler@4.105.0\
-        \ deploy \\\n  --config dist/server/wrangler.json \\\n  --name \"stealth-mail-pr-${{\
-        \ github.event.pull_request.number }}\"\n"
-      env:
-        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    - name: Comment PR with preview status
-      if: success()
-      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-      with:
-        script: "const isFork = '${{ env.IS_FORK }}' === 'true';\nconst hasToken =\
-          \ '${{ secrets.CLOUDFLARE_API_TOKEN }}' !== '';\nlet body;\nif (isFork)\
-          \ {\n  body = `\U0001F680 **PR Build Validation**\\n\\n✅ Client build succeeded!\\\
-          n\\n> ℹ️ Preview deployment skipped — this is a fork PR without Cloudflare\
-          \ credentials.`;\n} else if (!hasToken) {\n  body = `\U0001F680 **PR Build\
-          \ Validation**\\n\\n✅ Client build succeeded!\\n\\n> ℹ️ Preview deployment\
-          \ skipped — Cloudflare preview environment not configured.`;\n} else {\n\
-          \  const previewUrl = `https://stealth-mail-pr-${{ github.event.pull_request.number\
-          \ }}.${process.env.CLOUDFLARE_SUBDOMAIN || 'workers.dev'}`;\n  body = `\U0001F680\
-          \ **Preview Deployment**\\n\\n✅ Preview environment deployed successfully!\\\
-          n\\n**URL:** ${previewUrl}\\n\\n**Commit:** \\`${context.sha.slice(0, 7)}\\\
-          `\\n\\n> ⚠️ This preview runs WITHOUT production secrets. Some features\
-          \ may be limited.`;\n}\ntry {\n  await github.rest.issues.createComment({\n\
-          \    issue_number: context.issue.number,\n    owner: context.repo.owner,\n\
-          \    repo: context.repo.repo,\n    body: body\n  });\n} catch (err) {\n\
-          \  // Fork PRs get a read-only token for the base repo, so commenting is\n\
-          \  // not always permitted. This is best-effort and must not fail the job.\n\
-          \  console.log(`Skipping preview comment (not permitted): ${err.message}`);\n\
-          }\n"
-    - name: Write deployment gate result
-      if: always()
-      run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail;\
-        \ fi\nnode scripts/ci/write-gate-result.mjs \\\n  --gate-id pr-preview \\\n\
-        \  --name \"PR Preview Build\" \\\n  --owner platform/deployment \\\n  --dependency\
-        \ BETA-089 \\\n  --status \"$STATUS\" \\\n  --evidence-json '{\"pull_request\"\
-        :\"${{ github.event.pull_request.number }}\",\"commit\":\"${{ github.sha }}\"\
-        ,\"is_fork\":\"${{ env.IS_FORK }}\",\"build_only\":true}'\n"
-    - name: Upload gate result
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: gate-pr-preview
-        path: gate-result-pr-preview.json
-        retention-days: 7
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Verify no production secrets available
+        run:
+          "# Verify preview environment has NO production secrets\nif [ -n \"$STEALTH_CURSOR_SECRET\"\
+          \ ] && [ \"$STEALTH_CURSOR_SECRET\" != \"\" ]; then\n  echo \"ERROR: Production\
+          \ secret STEALTH_CURSOR_SECRET is available in preview environment\"\n  echo\
+          \ \"This is a security violation — preview deployments must not have production\
+          \ secrets\"\n  exit 1\nfi\necho \"✓ Preview environment verified: no production\
+          \ secrets available\"\n"
+      - name: Build client
+        timeout-minutes: 15
+        run: bun run build
+      - name: Validate build output
+        run: "# Verify the Cloudflare Vite plugin compiled the worker\nif [ ! -f \"\
+          dist/server/wrangler.json\" ]; then\n  echo \"ERROR: dist/server/wrangler.json\
+          \ not found after build\"\n  echo \"The Cloudflare Vite plugin may not have\
+          \ compiled the worker\"\n  exit 1\nfi\necho \"✓ Build output validated\"\n"
+      - name: Deploy preview (non-fork only)
+        if: env.IS_FORK != 'true' && env.CLOUDFLARE_API_TOKEN != ''
+        run: "# Deploy using the Vite-compiled worker output\n# The Vite plugin writes\
+          \ dist/server/wrangler.json with the compiled worker\nnpx wrangler@4.105.0\
+          \ deploy \\\n  --config dist/server/wrangler.json \\\n  --name \"stealth-mail-pr-${{\
+          \ github.event.pull_request.number }}\"\n"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Comment PR with preview status
+        if: success()
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: "const isFork = '${{ env.IS_FORK }}' === 'true';\nconst hasToken =\
+            \ '${{ secrets.CLOUDFLARE_API_TOKEN }}' !== '';\nlet body;\nif (isFork)\
+            \ {\n  body = `\U0001F680 **PR Build Validation**\\n\\n✅ Client build succeeded!\\\
+            n\\n> ℹ️ Preview deployment skipped — this is a fork PR without Cloudflare\
+            \ credentials.`;\n} else if (!hasToken) {\n  body = `\U0001F680 **PR Build\
+            \ Validation**\\n\\n✅ Client build succeeded!\\n\\n> ℹ️ Preview deployment\
+            \ skipped — Cloudflare preview environment not configured.`;\n} else {\n\
+            \  const previewUrl = `https://stealth-mail-pr-${{ github.event.pull_request.number\
+            \ }}.${process.env.CLOUDFLARE_SUBDOMAIN || 'workers.dev'}`;\n  body = `\U0001F680\
+            \ **Preview Deployment**\\n\\n✅ Preview environment deployed successfully!\\\
+            n\\n**URL:** ${previewUrl}\\n\\n**Commit:** \\`${context.sha.slice(0, 7)}\\\
+            `\\n\\n> ⚠️ This preview runs WITHOUT production secrets. Some features\
+            \ may be limited.`;\n}\ntry {\n  await github.rest.issues.createComment({\n\
+            \    issue_number: context.issue.number,\n    owner: context.repo.owner,\n\
+            \    repo: context.repo.repo,\n    body: body\n  });\n} catch (err) {\n\
+            \  // Fork PRs get a read-only token for the base repo, so commenting is\n\
+            \  // not always permitted. This is best-effort and must not fail the job.\n\
+            \  console.log(`Skipping preview comment (not permitted): ${err.message}`);\n\
+            }\n"
+      - name: Write deployment gate result
+        if: always()
+        run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail;\
+          \ fi\nnode scripts/ci/write-gate-result.mjs \\\n  --gate-id pr-preview \\\n\
+          \  --name \"PR Preview Build\" \\\n  --owner platform/deployment \\\n  --dependency\
+          \ BETA-089 \\\n  --status \"$STATUS\" \\\n  --evidence-json '{\"pull_request\"\
+          :\"${{ github.event.pull_request.number }}\",\"commit\":\"${{ github.sha }}\"\
+          ,\"is_fork\":\"${{ env.IS_FORK }}\",\"build_only\":true}'\n"
+      - name: Upload gate result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gate-pr-preview
+          path: gate-result-pr-preview.json
+          retention-days: 7
   preview-teardown:
     name: Teardown Preview
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name
       == github.repository
     steps:
-    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-      with:
-        bun-version: ${{ env.BUN_VERSION }}
-    - name: Install dependencies
-      run: bun install --frozen-lockfile
-    - name: Build client (needed for dist/server/wrangler.json)
-      run: bun run build
-    - name: Delete preview deployment
-      run: "npx wrangler@4.105.0 delete \\\n  --config dist/server/wrangler.json \\\
-        \n  --name \"stealth-mail-pr-${{ github.event.pull_request.number }}\" \\\n\
-        \  --yes\n"
-      env:
-        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    - name: Comment PR with teardown confirmation
-      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-      with:
-        script: "try {\n  await github.rest.issues.createComment({\n    issue_number:\
-          \ context.issue.number,\n    owner: context.repo.owner,\n    repo: context.repo.repo,\n\
-          \    body: `\U0001F5D1️ **Preview Teardown**\\n\\nPreview environment has\
-          \ been removed.`\n  });\n} catch (err) {\n  // Fork PRs get a read-only\
-          \ token for the base repo, so commenting is\n  // not always permitted.\
-          \ This is best-effort and must not fail the job.\n  console.log(`Skipping\
-          \ teardown comment (not permitted): ${err.message}`);\n};\n"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Build client (needed for dist/server/wrangler.json)
+        timeout-minutes: 15
+        run: bun run build
+      - name: Delete preview deployment
+        run: "npx wrangler@4.105.0 delete \\\n  --config dist/server/wrangler.json \\\
+          \n  --name \"stealth-mail-pr-${{ github.event.pull_request.number }}\" \\\n\
+          \  --yes\n"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Comment PR with teardown confirmation
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: "try {\n  await github.rest.issues.createComment({\n    issue_number:\
+            \ context.issue.number,\n    owner: context.repo.owner,\n    repo: context.repo.repo,\n\
+            \    body: `\U0001F5D1️ **Preview Teardown**\\n\\nPreview environment has\
+            \ been removed.`\n  });\n} catch (err) {\n  // Fork PRs get a read-only\
+            \ token for the base repo, so commenting is\n  // not always permitted.\
+            \ This is best-effort and must not fail the job.\n  console.log(`Skipping\
+            \ teardown comment (not permitted): ${err.message}`);\n};\n"
