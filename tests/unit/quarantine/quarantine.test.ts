@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createQuarantineRecord } from "@/features/mail/quarantine";
 
@@ -75,6 +75,20 @@ describe("createQuarantineRecord reason mapping", () => {
     const stringErr = createQuarantineRecord("unexpected string error");
     expect(stringErr.reasonCode).toBe("validation_error");
     expect(stringErr.userHeadline).toBe("Quarantined Envelope");
+  });
+
+  it("keeps diagnosticId stable for identical inputs at the same time", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-10T00:00:00.000Z"));
+      const first = createQuarantineRecord(new Error("same error"), "alice", "bob");
+      const repeated = createQuarantineRecord(new Error("same error"), "alice", "bob");
+
+      expect(repeated.diagnosticId).toBe(first.diagnosticId);
+      expect(first.quarantinedAt).toBe("2026-10-10T00:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("generates diagnosticId matching quar-xxxx-xxxx format and passes through sender/recipient", () => {
