@@ -149,6 +149,9 @@ jobs:
       - name: Unit Tests
         run: bun run test
 
+      - name: Unit Tests (src co-located)
+        run: bun x vitest run src
+
       - name: Build Client
         run: bun run build
 
