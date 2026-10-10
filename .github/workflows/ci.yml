@@ -749,6 +749,7 @@ jobs:
         run: ./node_modules/.bin/playwright install chromium --with-deps
 
       - name: Run E2E tests
+        timeout-minutes: 20
         run: bun run test:e2e
         env:
           CI: true
