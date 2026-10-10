@@ -7,13 +7,13 @@
 [![CI](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-| Review item       | Current status                                                                                                                                                                     |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| License           | MIT; see [`LICENSE`](LICENSE)                                                                                                                                                      |
-| Development       | Local application and testnet development paths; beta software                                                                                                                     |
-| Hosted experience | No verified public Sottara demo URL yet; the screenshot-like panel below is an illustration                                                                                           |
+| Review item       | Current status                                                                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| License           | MIT; see [`LICENSE`](LICENSE)                                                                                                                                                            |
+| Development       | Local application and testnet development paths; beta software                                                                                                                           |
+| Hosted experience | No verified public Sottara demo URL yet; the screenshot-like panel below is an illustration                                                                                              |
 | CI / deployment   | Check the [latest CI run](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml) and [deployment notes](docs/deployment/README.md); CI success and deployment are separate |
-| Contributions     | Public issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                                                              |
+| Contributions     | Public issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                                                                    |
 
 Sottara is an open-source beta for private email built around Stellar identity and programmable inbox access. Mailbox owners can decide how unfamiliar senders reach them: allow a verified identity, request approval, require postage, or block the sender. Encrypted message content stays off-chain; Stellar is used for identity and verifiable protocol actions.
 
@@ -126,11 +126,21 @@ The system is designed to keep message bodies and attachments out of public ledg
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and fill in your values (see the file for inline docs). Key groups:
+Runtime configuration is loaded and validated by `src/config/loader.ts` (`loadRuntimeConfig`). Variables can be configured in `.env` (copy from [`.env.example`](.env.example) for local development) or bound via environment secrets in deployment.
 
-| Variable group | Key variables |
-| --- | --- |
-| Storage (KV) | `SOTTARA_KV_LOCAL_ID`, `SOTTARA_KV_PREVIEW_ID`, `SOTTARA_KV_PRODUCTION_ID` |
+For the production secret inventory, rotation cadence, and emergency revocation procedures, see the [Secrets Inventory & Operational Procedures](docs/deployment/SECRETS.md).
+
+| Variable group         | Key variables                                                                                                                                                                                                                                                                                                                       | Description                                                                                                                                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Network**            | `STEALTH_STELLAR_NETWORK`, `STEALTH_HORIZON_URL`, `STEALTH_SOROBAN_RPC_URL`, `STEALTH_NETWORK_PASSPHRASE`                                                                                                                                                                                                                           | Network selection (`testnet` / `mainnet`), Horizon and Soroban RPC endpoints, and network passphrases.                                                                                                        |
+| **Storage**            | `STEALTH_STORAGE_DRIVER`, `STEALTH_KV_NAMESPACE_ID`, `STEALTH_KV_LOCAL_ID`, `STEALTH_KV_PREVIEW_ID`, `STEALTH_KV_PRODUCTION_ID`                                                                                                                                                                                                     | Storage backend driver (`memory`, `hybrid`), KV namespace IDs, and Cloudflare bindings (see [`.env.example`](.env.example) and [`scripts/generate-wrangler-config.ts`](scripts/generate-wrangler-config.ts)). |
+| **Session & Security** | `STEALTH_AUTH_CHALLENGE_LIFETIME_MS`, `STEALTH_AUTH_CLOCK_SKEW_MS`, `STEALTH_AUTH_NONCE_TTL_MS`, `STEALTH_QUOTE_LIFETIME_MS`                                                                                                                                                                                                        | Lifetime and replay-protection tolerances for cryptographic authentication challenges, session nonces, and fee quotes.                                                                                        |
+| **Relay**              | `STEALTH_RELAY_URL`, `STEALTH_RELAY_TIMEOUT_MS`, `STEALTH_RELAY_API_KEY`                                                                                                                                                                                                                                                            | Relay federation and message delivery endpoints, connection timeouts, and authentication keys.                                                                                                                |
+| **Contract**           | `STEALTH_REGISTRY_CONTRACT_ID`, `STEALTH_POSTAGE_CONTRACT_ID`, `STEALTH_LIFECYCLE_CONTRACT_ID`, `STEALTH_RECEIPTS_CONTRACT_ID`, `STEALTH_POLICIES_CONTRACT_ID`, `STEALTH_DOMAIN_TAG`, `STEALTH_PROTOCOL_VERSION`                                                                                                                    | Soroban smart contract IDs for policies, postage, receipts, and lifecycle tracking, alongside protocol domain separation tags.                                                                                |
+| **Origin & CORS**      | `STEALTH_APP_URL`, `STEALTH_CORS_ALLOWED_ORIGINS`, `STEALTH_CORS_ALLOWED_METHODS`, `STEALTH_CORS_ALLOWED_HEADERS`, `STEALTH_CORS_ALLOW_CREDENTIALS`                                                                                                                                                                                 | Public web application URL and cross-origin resource sharing policy configurations.                                                                                                                           |
+| **Notifications**      | `STEALTH_NOTIFICATION_TRANSPORT`, `STEALTH_SMTP_HOST`, `STEALTH_SMTP_PORT`, `STEALTH_SMTP_SECURE`, `STEALTH_SMTP_STARTTLS`, `STEALTH_SMTP_USERNAME`, `STEALTH_SMTP_PASSWORD`, `STEALTH_NOTIFICATION_FROM`, `STEALTH_VERIFICATION_TOKEN_LIFETIME_MS`, `STEALTH_VERIFICATION_RESEND_COOLDOWN_MS`, `STEALTH_VERIFICATION_MAX_ATTEMPTS` | Outbound notification transport (`smtp` or local `sink`), mail server connection parameters, and verification token TTLs.                                                                                     |
+| **Beta controls**      | `STEALTH_BETA_CONTROL_TTL_SECONDS`, `STEALTH_BETA_KILLSWITCH_DEFAULT`, `STEALTH_BETA_KILLSWITCH_<CAPABILITY>`, `STEALTH_BETA_FLAG_<NAME>`                                                                                                                                                                                           | Dynamic capability kill switches, control cache TTLs, and beta feature toggle flags.                                                                                                                          |
+| **Secrets & Cursors**  | `STEALTH_CURSOR_SECRET`, `STEALTH_STORAGE_SECRET`, `STEALTH_RPC_API_KEY`, `STEALTH_OPERATOR_SECRET`, `STEALTH_BACKUP_KEY`                                                                                                                                                                                                           | Sensitive cryptographic keys and operator custody secrets. Documented in [Secrets Inventory](docs/deployment/SECRETS.md); never committed to source control.                                                  |
 
 ## Security
 
@@ -160,8 +170,8 @@ Sottara is distributed under the [MIT License](LICENSE).
 
 ## Prerequisites
 
-| Tool | Notes |
-| --- | --- |
-| **Node.js** | 24+ and Bun 1.3 |
-| **Cloudflare Wrangler** | Workers / KV |
-| **Rust** | for the contracts |
+| Tool                    | Notes             |
+| ----------------------- | ----------------- |
+| **Node.js**             | 24+ and Bun 1.3   |
+| **Cloudflare Wrangler** | Workers / KV      |
+| **Rust**                | for the contracts |
