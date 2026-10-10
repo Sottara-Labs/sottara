@@ -51,7 +51,10 @@ describe("relay diagnostics route", () => {
     await relayDiagnosticsHandler(req, res, repository);
 
     expect(status).toHaveBeenCalledWith(404);
-    expect(json).toHaveBeenCalledWith({ error: "relay_not_found" });
+    expect(json).toHaveBeenCalledWith({
+      error: "relay_not_found",
+      message: "Diagnostic report unavailable: Relay not found.",
+    });
     expect(mockedGetRelayDiagnosticsResponse).not.toHaveBeenCalled();
   });
 
@@ -65,7 +68,10 @@ describe("relay diagnostics route", () => {
     await relayDiagnosticsHandler(req, res, repository);
 
     expect(status).toHaveBeenCalledWith(403);
-    expect(json).toHaveBeenCalledWith({ error: "forbidden" });
+    expect(json).toHaveBeenCalledWith({
+      error: "forbidden",
+      message: "Diagnostic report unavailable: You do not have permission to view this relay.",
+    });
     expect(mockedGetRelayDiagnosticsResponse).not.toHaveBeenCalled();
   });
 
@@ -122,7 +128,10 @@ describe("relay diagnostics route", () => {
     await relayDiagnosticsHandler(req, res, repository);
 
     expect(status).toHaveBeenCalledWith(500);
-    expect(json).toHaveBeenCalledWith({ error: "diagnostics_unavailable" });
+    expect(json).toHaveBeenCalledWith({
+      error: "diagnostics_unavailable",
+      message: "Diagnostic report unavailable: Server error occurred.",
+    });
   });
 
   it("registers the route on a router", () => {

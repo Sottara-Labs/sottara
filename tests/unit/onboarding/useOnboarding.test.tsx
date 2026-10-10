@@ -42,6 +42,7 @@ const COMPLETED_RESULT: OnboardingCompleteResult = {
 describe("useOnboarding (profile-first, wallet-free)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage?.clear();
     vi.mocked(fetchOnboardingDraft).mockResolvedValue(null);
     vi.mocked(saveOnboardingDraft).mockResolvedValue({
       status: "in_progress",

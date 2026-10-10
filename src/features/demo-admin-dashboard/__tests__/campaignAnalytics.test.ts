@@ -41,11 +41,11 @@ describe("KPI_TREND_TOKENS", () => {
 
 describe("getKpiTrendToken", () => {
   it('returns emerald text for "up"', () => {
-    expect(getKpiTrendToken("up").text).toBe("text-emerald-400");
+    expect(getKpiTrendToken("up").text).toBe("text-status-success dark:text-emerald-400");
   });
 
   it('returns rose text for "down"', () => {
-    expect(getKpiTrendToken("down").text).toBe("text-rose-400");
+    expect(getKpiTrendToken("down").text).toBe("text-status-danger dark:text-rose-400");
   });
 
   it('returns muted text for "stable"', () => {
