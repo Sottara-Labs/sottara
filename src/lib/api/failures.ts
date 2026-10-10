@@ -2,7 +2,7 @@
 // BETA-071 (Issue #1978) — canonical client failure kinds and actions.
 // ---------------------------------------------------------------------------
 
-import { ApiClientError, errorLabel, isApiClientError, normalizeApiClientError } from "./errors";
+import { ApiClientError, errorLabel, normalizeApiClientError } from "./errors";
 
 export const APP_FAILURE_KINDS = [
   "offline",
@@ -77,8 +77,6 @@ export function classifyAppFailure(
     kind = "dependency_down";
   } else if (error.retryable) {
     kind = "dependency_down";
-  } else if (isApiClientError(caught) || error.code) {
-    kind = error.code === "internal_error" ? "unknown" : "unknown";
   }
 
   const retryable = RETRY_KINDS.has(kind);

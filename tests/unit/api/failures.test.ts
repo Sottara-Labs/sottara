@@ -63,6 +63,14 @@ describe("classifyAppFailure (BETA-071)", () => {
     expect(classifyAppFailure(apiError("internal_error")).kind).toBe("unknown");
   });
 
+  it("classifies internal_error as unknown with the documented actions", () => {
+    const classified = classifyAppFailure(apiError("internal_error", { requestId: "req_int" }));
+    expect(classified.kind).toBe("unknown");
+    expect(classified.retryable).toBe(false);
+    expect(classified.actions).toEqual(["preserve_unsent_work", "copy_support_id"]);
+    expect(classified.supportId).toBe("req_int");
+  });
+
   it("never drops unsent work and never treats a failure as success", () => {
     for (const kind of APP_FAILURE_KINDS) {
       const classified = classifyAppFailure(
