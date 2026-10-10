@@ -1,9 +1,28 @@
 // src/features/demo-admin-dashboard/persistence/localStorageAdapter.ts
+
+export type PersistenceError =
+  | { kind: "quota_exceeded" }
+  | { kind: "parse_error" }
+  | { kind: "storage_error"; cause: unknown };
+
+export type SaveResult = { ok: true } | { ok: false; error: PersistenceError };
+export type LoadResult<T> =
+  | { ok: true; value: T | null; missing: boolean }
+  | { ok: false; error: PersistenceError };
+
+function toPersistenceError(err: unknown): PersistenceError {
+  if (err instanceof DOMException && (err.name === "QuotaExceededError" || (err as any).code === 22)) {
+    return { kind: "quota_exceeded" };
+  }
+  if (err instanceof SyntaxError) return { kind: "parse_error" };
+  return { kind: "storage_error", cause: err };
+}
+
 export interface StorageAdapter<T> {
   /** Save a value under a given key */
-  save(key: string, value: T): void;
-  /** Load a value by key; returns null if missing or parse error */
-  load(key: string): T | null;
+  save(key: string, value: T): SaveResult;
+  /** Load a value by key; the result distinguishes missing keys, parse errors, and storage errors */
+  load(key: string): LoadResult<T>;
   /** Remove a value from storage */
   clear(key: string): void;
 }
@@ -28,22 +47,32 @@ export class LocalStoragePersistenceError extends Error {
  * It is generic so it can be reused for any type (e.g., the Draft state).
  */
 export class LocalStorageAdapter<T> implements StorageAdapter<T> {
-  save(key: string, value: T): void {
+  save(key: string, value: T): SaveResult {
     try {
-      const serialized = JSON.stringify(value);
-      (globalThis as any).localStorage.setItem(key, serialized);
+      (globalThis as any).localStorage.setItem(key, JSON.stringify(value));
+      return { ok: true };
     } catch (e) {
       throw new LocalStoragePersistenceError("save", key, e);
+      console.error("LocalStorageAdapter.save error", e);
+      return { ok: false, error: toPersistenceError(e) };
     }
   }
 
-  load(key: string): T | null {
+  load(key: string): LoadResult<T> {
+    let raw: string | null;
     try {
-      const raw = (globalThis as any).localStorage.getItem(key) as string | null;
-      if (raw === null) return null;
-      return JSON.parse(raw) as T;
+      raw = (globalThis as any).localStorage.getItem(key) as string | null;
     } catch (e) {
       throw new LocalStoragePersistenceError("load", key, e);
+      console.error("LocalStorageAdapter.load error", e);
+      return { ok: false, error: toPersistenceError(e) };
+    }
+    if (raw === null) return { ok: true, value: null, missing: true };
+    try {
+      return { ok: true, value: JSON.parse(raw) as T, missing: false };
+    } catch (e) {
+      console.error("LocalStorageAdapter.load parse error", e);
+      return { ok: false, error: { kind: "parse_error" } };
     }
   }
 
@@ -71,7 +100,8 @@ export function saveDraft(draft: Draft): void {
 }
 
 export function loadDraft(): Draft | null {
-  return draftAdapter.load(DRAFT_KEY);
+  const r = draftAdapter.load(DRAFT_KEY);
+  return r.ok ? r.value : null;
 }
 
 export function clearDraft(): void {
@@ -87,7 +117,8 @@ export function saveDraftDataset(dataset: Draft[]): void {
 }
 
 export function loadDraftDataset(): Draft[] | null {
-  return datasetAdapter.load(DATASET_KEY);
+  const r = datasetAdapter.load(DATASET_KEY);
+  return r.ok ? r.value : null;
 }
 
 export function clearDraftDataset(): void {
@@ -103,11 +134,11 @@ export function saveCampaignSnapshots(snapshots: CampaignSnapshot[]): void {
 }
 
 export function loadCampaignSnapshots(): CampaignSnapshot[] {
-  const loaded = snapshotAdapter.load(SNAPSHOTS_KEY);
-  if (loaded === null) {
+  const r = snapshotAdapter.load(SNAPSHOTS_KEY);
+  if (!r.ok || r.value === null) {
     return defaultCampaignSnapshots;
   }
-  return loaded;
+  return r.value;
 }
 
 export function clearCampaignSnapshots(): void {
@@ -123,11 +154,11 @@ export function saveCampaignTags(tags: CampaignTag[]): void {
 }
 
 export function loadCampaignTags(): CampaignTag[] {
-  const loaded = tagAdapter.load(TAGS_KEY);
-  if (loaded === null) {
+  const r = tagAdapter.load(TAGS_KEY);
+  if (!r.ok || r.value === null) {
     return defaultCampaignTags;
   }
-  return loaded;
+  return r.value;
 }
 
 export function clearCampaignTags(): void {
@@ -145,7 +176,8 @@ export function saveSegmentEditorState(state: SegmentEditorState): void {
 }
 
 export function loadSegmentEditorState(): SegmentEditorState | null {
-  return segmentEditorAdapter.load(SEGMENT_EDITOR_KEY);
+  const r = segmentEditorAdapter.load(SEGMENT_EDITOR_KEY);
+  return r.ok ? r.value : null;
 }
 
 export function clearSegmentEditorState(): void {
@@ -163,9 +195,11 @@ export function saveAssignments(state: AssignmentState): void {
 }
 
 export function loadAssignments(): AssignmentState | null {
-  return assignmentsAdapter.load(ASSIGNMENTS_KEY);
+  const r = assignmentsAdapter.load(ASSIGNMENTS_KEY);
+  return r.ok ? r.value : null;
 }
 
 export function clearAssignments(): void {
   assignmentsAdapter.clear(ASSIGNMENTS_KEY);
 }
+
