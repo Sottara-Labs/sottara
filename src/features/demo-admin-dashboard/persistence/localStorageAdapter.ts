@@ -8,6 +8,21 @@ export interface StorageAdapter<T> {
   clear(key: string): void;
 }
 
+export type LocalStorageOperation = "save" | "load" | "clear";
+
+/** A storage failure that callers can surface instead of silently losing state. */
+export class LocalStoragePersistenceError extends Error {
+  readonly operation: LocalStorageOperation;
+  readonly key: string;
+
+  constructor(operation: LocalStorageOperation, key: string, cause: unknown) {
+    super(`Unable to ${operation} localStorage key "${key}"`, { cause });
+    this.name = "LocalStoragePersistenceError";
+    this.operation = operation;
+    this.key = key;
+  }
+}
+
 /**
  * Simple wrapper around the browser's `localStorage` that serialises values as JSON.
  * It is generic so it can be reused for any type (e.g., the Draft state).
@@ -18,8 +33,7 @@ export class LocalStorageAdapter<T> implements StorageAdapter<T> {
       const serialized = JSON.stringify(value);
       (globalThis as any).localStorage.setItem(key, serialized);
     } catch (e) {
-      // In a demo context we simply log – production code would surface the error.
-      console.error("LocalStorageAdapter.save error", e);
+      throw new LocalStoragePersistenceError("save", key, e);
     }
   }
 
@@ -29,8 +43,7 @@ export class LocalStorageAdapter<T> implements StorageAdapter<T> {
       if (raw === null) return null;
       return JSON.parse(raw) as T;
     } catch (e) {
-      console.error("LocalStorageAdapter.load error", e);
-      return null;
+      throw new LocalStoragePersistenceError("load", key, e);
     }
   }
 
@@ -38,7 +51,7 @@ export class LocalStorageAdapter<T> implements StorageAdapter<T> {
     try {
       (globalThis as any).localStorage.removeItem(key);
     } catch (e) {
-      console.error("LocalStorageAdapter.clear error", e);
+      throw new LocalStoragePersistenceError("clear", key, e);
     }
   }
 }
