@@ -25,7 +25,11 @@ import {
 } from "@/server/api/domain";
 import { ApiError } from "@/server/api/errors";
 import type { InsertEnvelopeResult } from "@/server/api/repository";
-import { InMemoryNonceStore, NonceService } from "@/server/api/auth/nonce-service";
+import {
+  getAuthNonceTtlMs,
+  InMemoryNonceStore,
+  NonceService,
+} from "@/server/api/auth/nonce-service";
 import type { RelayPersistence } from "./persistence";
 import type { RelayWorker } from "./worker";
 import type { RelayObjectStore } from "./object-store";
@@ -43,6 +47,8 @@ export const DEFAULT_RELAY_TTL_MS = 60 * 60 * 1000;
 export const MAX_RELAY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Encrypted relay message payload cap (base64 ciphertext). */
 export const RELAY_MAX_PAYLOAD_BYTES = 2 * 1024 * 1024;
+/** Local replay-result retention; durable idempotency records remain authoritative. */
+export const DEFAULT_RELAY_IDEMPOTENCY_TTL_MS = 30_000;
 
 const hostnamePattern =
   /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -113,6 +119,10 @@ export interface RelayServiceConfig {
   network: RelayNetworkConfig;
   audience?: string;
   nonceService?: NonceService;
+  /** Override the in-memory nonce replay window; defaults to auth nonce config. */
+  nonceTtlMs?: number;
+  /** Override the worker-local idempotency replay-result retention. */
+  idempotencyTtlMs?: number;
   nowSeconds?: () => number;
   /**
    * Best-effort hook invoked after a message is enqueued (e.g. scheduling the
@@ -167,8 +177,12 @@ function isValidHttpUrl(value: string): boolean {
 export class RelayService {
   private readonly nonceService: NonceService;
   private readonly audience: string;
-  private readonly idempotencyStore = new Map<string, unknown>();
-  private readonly seenNonces = new Set<string>();
+  /** Timestamped worker-local nonce window; expired entries are pruned on access. */
+  private readonly seenNonces = new Map<string, number>();
+  /** Timestamped worker-local idempotency results; expired entries are pruned on access. */
+  private readonly idempotencyStore = new Map<string, { value: unknown; expiresAt: number }>();
+  private readonly nonceTtlMs: number;
+  private readonly idempotencyTtlMs: number;
   private readonly deps: RelayServiceDependencies;
 
   constructor(
@@ -195,6 +209,16 @@ export class RelayService {
     this.deps = deps;
     this.nonceService = config.nonceService ?? new NonceService(new InMemoryNonceStore());
     this.audience = config.audience ?? "relay:stealth.test";
+    this.nonceTtlMs = config.nonceTtlMs ?? getAuthNonceTtlMs();
+    this.idempotencyTtlMs = config.idempotencyTtlMs ?? DEFAULT_RELAY_IDEMPOTENCY_TTL_MS;
+    if (!Number.isSafeInteger(this.nonceTtlMs) || this.nonceTtlMs <= 0) {
+      throw new RangeError("Relay nonce TTL must be a positive integer number of milliseconds");
+    }
+    if (!Number.isSafeInteger(this.idempotencyTtlMs) || this.idempotencyTtlMs <= 0) {
+      throw new RangeError(
+        "Relay idempotency TTL must be a positive integer number of milliseconds",
+      );
+    }
   }
 
   getNonceService(): NonceService {
@@ -214,19 +238,39 @@ export class RelayService {
   }
 
   isNonceSeen(nonce: string): boolean {
-    return this.seenNonces.has(nonce);
+    const now = Date.now();
+    this.pruneExpired(now);
+    const seenAt = this.seenNonces.get(nonce);
+    return seenAt !== undefined && now - seenAt < this.nonceTtlMs;
   }
 
   markNonceSeen(nonce: string): void {
-    this.seenNonces.add(nonce);
+    const now = Date.now();
+    this.pruneExpired(now);
+    this.seenNonces.set(nonce, now);
   }
 
   getIdempotencyResult(key: string): unknown | null {
-    return this.idempotencyStore.get(key) ?? null;
+    this.pruneExpired();
+    return this.idempotencyStore.get(key)?.value ?? null;
   }
 
   storeIdempotencyResult(key: string, result: unknown): void {
-    this.idempotencyStore.set(key, result);
+    const now = Date.now();
+    this.pruneExpired(now);
+    this.idempotencyStore.set(key, {
+      value: result,
+      expiresAt: now + this.idempotencyTtlMs,
+    });
+  }
+
+  private pruneExpired(now = Date.now()): void {
+    for (const [key, entry] of this.idempotencyStore) {
+      if (entry.expiresAt <= now) this.idempotencyStore.delete(key);
+    }
+    for (const [nonce, seenAt] of this.seenNonces) {
+      if (now - seenAt >= this.nonceTtlMs) this.seenNonces.delete(nonce);
+    }
   }
 
   /**
