@@ -120,7 +120,10 @@ export function useMailBulkActions({
             }
           : current,
       );
-      onClearSelection();
+      // Keep failed targets selected so the user can retry them after fixing
+      // the underlying issue. A fully successful batch can safely clear the
+      // selection as before.
+      if (failures.length === 0) onClearSelection();
 
       if (failures.length > 0) {
         onToast(
