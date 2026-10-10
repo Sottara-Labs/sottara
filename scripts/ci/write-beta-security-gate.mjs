@@ -20,6 +20,7 @@ const derived = deriveBetaSecurityStatus({
   cryptoOutcome: readArg("--crypto") ?? "failure",
   cryptoEvidenceOutcome: readArg("--crypto-evidence") ?? "failure",
   securityRegressionOutcome: readArg("--security-regression") ?? "failure",
+  securityRoutesOutcome: readArg("--security-routes") ?? "failure",
   securityOutcome: readArg("--security") ?? "failure",
   evidence,
 });

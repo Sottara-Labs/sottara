@@ -42,17 +42,18 @@ export function deriveBetaSecurityStatus({
   cryptoOutcome,
   cryptoEvidenceOutcome = "success",
   securityRegressionOutcome = "success",
+  securityRoutesOutcome = "success",
+  securityOutcome = "success",
   evidence,
 } = {}) {
   const failedStep = [
     ["Crypto or managed-wallet tests", cryptoOutcome],
     ["Crypto misuse regression evidence", cryptoEvidenceOutcome],
     ["Security regression evidence", securityRegressionOutcome],
+    ["Security route authorization suites", securityRoutesOutcome],
   ].find(([, outcome]) => outcome === "failure");
 
   if (failedStep) {
-export function deriveBetaSecurityStatus({ cryptoOutcome, securityOutcome, evidence } = {}) {
-  if (cryptoOutcome === "failure") {
     return {
       status: "fail",
       message: `${failedStep[0]} failed`,
@@ -104,6 +105,7 @@ export function deriveBetaSecurityStatus({ cryptoOutcome, securityOutcome, evide
     cryptoOutcome === "success" &&
     cryptoEvidenceOutcome === "success" &&
     securityRegressionOutcome === "success" &&
+    securityRoutesOutcome === "success" &&
     evidence.status === "pass"
   ) {
     return { status: "pass", message: null };

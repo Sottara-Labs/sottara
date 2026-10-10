@@ -25,7 +25,11 @@ import { getRouteHandler } from "../../../helpers/route-handler";
 function cookieRequest(path: string, method: string, cookie: string): Request {
   return new Request(`https://stealth.test${path}`, {
     method,
-    headers: { "content-type": "application/json", Cookie: cookie },
+    headers: {
+      "content-type": "application/json",
+      Cookie: cookie,
+      Origin: "http://localhost:3000",
+    },
   });
 }
 
