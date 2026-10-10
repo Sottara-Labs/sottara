@@ -112,7 +112,16 @@ function removeStorageItem(key: string): void {
 export function getDeviceId(): string {
   let deviceId = getStorageItem(DEVICE_ID_STORAGE_KEY);
   if (!deviceId) {
-    deviceId = `dev_${Math.random().toString(36).slice(2, 11)}_${Date.now().toString(36)}`;
+    const source = globalThis.crypto;
+    if (typeof source?.randomUUID === "function") {
+      deviceId = `dev_${source.randomUUID()}`;
+    } else if (typeof source?.getRandomValues === "function") {
+      const bytes = source.getRandomValues(new Uint8Array(16));
+      const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      deviceId = `dev_${suffix}`;
+    } else {
+      throw new Error("CSPRNG unavailable: cannot generate a secure device id");
+    }
     setStorageItem(DEVICE_ID_STORAGE_KEY, deviceId);
   }
   return deviceId;
