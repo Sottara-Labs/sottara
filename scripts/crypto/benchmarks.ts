@@ -1,15 +1,15 @@
 /**
  * Cryptographic performance benchmarks for Hush message sealing and opening.
  *
- * Run with: npx tsx src/services/crypto/benchmarks.ts
+ * Run with: npx tsx scripts/crypto/benchmarks.ts
  *
  * Results are printed as a table. No plaintext, keys, or secrets are logged.
  * Warm-up iterations run before each measured batch to stabilise JIT and
  * isolate measurement from first-run overhead.
  */
 
-import { sealEnvelope } from "./envelope";
-import { openEnvelope, WrappedKeyProvider } from "./open-envelope";
+import { sealEnvelope } from "../../src/services/crypto/envelope";
+import { openEnvelope, WrappedKeyProvider } from "../../src/services/crypto/open-envelope";
 import {
   generateRecipientKeyPair,
   importRecipientPublicKey,
@@ -17,10 +17,10 @@ import {
   wrapContentKey,
   unwrapContentKey,
   wrapContentKeyForRecipients,
-} from "./key-wrap";
-import { createCommitment } from "./commitment";
-import { canonicalize } from "./jcs";
-import { createSealingKey, createOpeningKey } from "./keys";
+} from "../../src/services/crypto/key-wrap";
+import { createCommitment } from "../../src/services/crypto/commitment";
+import { canonicalize } from "../../src/services/crypto/jcs";
+import { createSealingKey, createOpeningKey } from "../../src/services/crypto/keys";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                             */

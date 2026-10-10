@@ -7,7 +7,7 @@ and canonicalization.
 ## Running
 
 ```bash
-npx tsx src/services/crypto/benchmarks.ts
+npx tsx scripts/crypto/benchmarks.ts
 ```
 
 No build step is required. The script uses Node.js's built-in Web Crypto API
