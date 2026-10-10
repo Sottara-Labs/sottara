@@ -161,7 +161,7 @@ function AdminDlqControl() {
               <select
                 value={jobTypeFilter}
                 onChange={(e) => setJobTypeFilter(e.target.value)}
-                className="w-full px-3 py-1.5 bg-background dark:bg-neutral-950 border border-border dark:border-neutral-850 rounded-lg text-xs focus:outline-none focus:border-purple-500 text-status-neutral dark:text-neutral-300"
+                className="w-full px-3 py-1.5 bg-background dark:bg-neutral-950 border border-border dark:border-neutral-850 rounded-lg text-xs focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 text-status-neutral dark:text-neutral-300"
               >
                 <option value="">All Job Types</option>
                 <option value="funding">Funding Operations</option>
@@ -177,7 +177,7 @@ function AdminDlqControl() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-1.5 bg-background dark:bg-neutral-950 border border-border dark:border-neutral-850 rounded-lg text-xs focus:outline-none focus:border-purple-500 text-status-neutral dark:text-neutral-300"
+                className="w-full px-3 py-1.5 bg-background dark:bg-neutral-950 border border-border dark:border-neutral-850 rounded-lg text-xs focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 text-status-neutral dark:text-neutral-300"
               >
                 <option value="">All Statuses</option>
                 <option value="failed">Failed (Pending Triage)</option>
