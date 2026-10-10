@@ -550,6 +550,9 @@ jobs:
     name: Performance Budget
     needs: [client-checks]
     runs-on: ubuntu-latest
+    # Keep a wedged dev server or load runner from consuming the default
+    # six-hour GitHub Actions budget while leaving room for dependency setup.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -564,6 +567,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: bun install --frozen-lockfile
 
       - name: Start dev server
@@ -575,6 +579,7 @@ jobs:
         run: npx --yes wait-on@8.0.1 http://127.0.0.1:5173 --timeout 120000
 
       - name: Load & performance scenarios
+        timeout-minutes: 15
         run: npm run test:load
         env:
           API_URL: http://127.0.0.1:5173
