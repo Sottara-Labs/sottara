@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { KvRelayPersistence } from "../../../src/services/relay/kv-persistence";
+import { StealthCoordinator } from "../../../src/server/api/stealth-coordinator";
 import type { RelayEnvelope } from "../../../src/services/relay/persistence";
 
 class MockKVNamespace {
@@ -15,6 +16,35 @@ class MockKVNamespace {
 
   async put(key: string, value: string): Promise<void> {
     this.store.set(key, value);
+  }
+}
+
+class MockDurableObjectNamespace {
+  private readonly coordinator = new StealthCoordinator(
+    {
+      id: { toString: () => "relay-counters" },
+      storage: {
+        store: new Map<string, unknown>(),
+        async get(key: string) {
+          return this.store.get(key);
+        },
+        async put(key: string, value: unknown) {
+          this.store.set(key, value);
+        },
+        async delete(key: string) {
+          return this.store.delete(key);
+        },
+      },
+    } as any,
+    {},
+  );
+
+  idFromName(name: string) {
+    return { toString: () => name };
+  }
+
+  get() {
+    return this.coordinator;
   }
 }
 
@@ -76,5 +106,29 @@ describe("KvRelayPersistence admission idempotency (BETA-036)", () => {
     expect(stored?.admission.kind).toBe("trusted");
     expect(stored?.admission.policyVersion).toBe(3);
     expect(await persistence.getQueueDepth()).toBe(1);
+  });
+
+  it("serializes relay counter increments through the coordinator", async () => {
+    const persistence = new KvRelayPersistence(
+      new MockKVNamespace() as unknown as KVNamespace,
+      new MockDurableObjectNamespace() as unknown as DurableObjectNamespace,
+    );
+
+    await Promise.all([persistence.recordRetry(), persistence.recordRetry()]);
+
+    expect(await persistence.getRetryCount()).toBe(2);
+  });
+
+  it("seeds a coordinator counter from the legacy KV value once", async () => {
+    const kv = new MockKVNamespace();
+    await kv.put("relay:retry", "4");
+    const persistence = new KvRelayPersistence(
+      kv as unknown as KVNamespace,
+      new MockDurableObjectNamespace() as unknown as DurableObjectNamespace,
+    );
+
+    expect(await persistence.getRetryCount()).toBe(4);
+    await persistence.recordRetry();
+    expect(await persistence.getRetryCount()).toBe(5);
   });
 });

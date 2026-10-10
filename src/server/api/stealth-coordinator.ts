@@ -935,6 +935,43 @@ export class StealthCoordinator extends DurableObjectBase {
     });
   }
 
+  /**
+   * Read a durable relay counter. Relay counters are lifetime totals, so they
+   * use a separate scalar namespace instead of the sliding-window counters
+   * used by rate limiting.
+   */
+  async getRelayCounter(key: string, initialValue = 0): Promise<number> {
+    return this.runExclusive(`relay-counter:${key}`, async () => {
+      const storageKey = `relay-counter:${key}`;
+      const stored = await this.ctx.storage.get(storageKey);
+      if (stored === undefined) {
+        const value = Number.isSafeInteger(initialValue) && initialValue >= 0 ? initialValue : 0;
+        if (value > 0) await this.ctx.storage.put(storageKey, value);
+        return value;
+      }
+      return typeof stored === "number" && Number.isSafeInteger(stored) && stored >= 0 ? stored : 0;
+    });
+  }
+
+  /** Atomically increment a lifetime relay counter across Worker instances. */
+  async incrementRelayCounter(key: string, initialValue = 0): Promise<number> {
+    return this.runExclusive(`relay-counter:${key}`, async () => {
+      const storageKey = `relay-counter:${key}`;
+      const stored = await this.ctx.storage.get(storageKey);
+      const current =
+        stored === undefined
+          ? Number.isSafeInteger(initialValue) && initialValue >= 0
+            ? initialValue
+            : 0
+          : typeof stored === "number" && Number.isSafeInteger(stored) && stored >= 0
+            ? stored
+            : 0;
+      const next = current + 1;
+      await this.ctx.storage.put(storageKey, next);
+      return next;
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Issue #1936 (BETA-029) — Durable encrypted envelope store
   // ---------------------------------------------------------------------------

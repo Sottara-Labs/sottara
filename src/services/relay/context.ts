@@ -112,7 +112,12 @@ export async function getRelayService(): Promise<RelayService> {
     );
   }
 
-  const persistence = new KvRelayPersistence(env.STEALTH_KV);
+  if (!env.STEALTH_COORDINATOR) {
+    throw new Error(
+      "Configuration error: STEALTH_COORDINATOR binding is required for relay counters.",
+    );
+  }
+  const persistence = new KvRelayPersistence(env.STEALTH_KV, env.STEALTH_COORDINATOR);
   const worker = new InProcessRelayWorker(persistence);
   const objectStore = env.STEALTH_OBJECT_STORE
     ? createRelayObjectStore(env.STEALTH_OBJECT_STORE)
