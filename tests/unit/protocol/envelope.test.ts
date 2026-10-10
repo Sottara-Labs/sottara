@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { validateEnvelope, canonicalize } from "../../../src/server/api/envelope";
+import { canonicalize as cryptoCanonicalize } from "../../../src/services/crypto/jcs";
 import vectors from "../../../protocol/vectors/vectors.json";
 
 describe("protocol/envelope", () => {
@@ -37,6 +38,20 @@ describe("protocol/envelope", () => {
 
   // Additional sanity tests for JCS canonicalization logic
   describe("canonicalize JCS details", () => {
+    it("shares the crypto canonicalizer for representative JSON values", () => {
+      const fixtures = [
+        { nested: { b: 2, a: [3, null, "ünïcödé ✓"] }, number: 1.5e3 },
+        [null, true, -0, 42.25, { z: "last", a: "first" }],
+        "plain string",
+        123.45,
+        null,
+      ];
+
+      for (const fixture of fixtures) {
+        expect(canonicalize(fixture)).toBe(cryptoCanonicalize(fixture));
+      }
+    });
+
     it("should sort keys lexicographically", () => {
       const obj = { z: 1, a: 2, m: { y: 3, b: 4 } };
       const canonical = canonicalize(obj);
