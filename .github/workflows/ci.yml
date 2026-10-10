@@ -402,6 +402,11 @@ jobs:
         path: gate-result-beta-security.json
         retention-days: 7
         if-no-files-found: ignore
+    - name: Write gate result
+      if: always()
+      run: "node scripts/ci/write-beta-security-gate.mjs \\\n  --crypto \"${{ steps.crypto.outcome\
+        \ }}\" \\\n  --security \"${{ steps.security_regression.outcome }}\" \\\n\
+        \  --evidence gate-result-beta-084-security.json\n"
   beta-live-data:
     name: Live-Data No-Mock (Local Fake)
     needs:
