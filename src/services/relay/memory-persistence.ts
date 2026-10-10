@@ -2,7 +2,8 @@
  * In-memory relay persistence (Issue #1935 BETA-028).
  *
  * Used by the Docker entry and development builds. Not durable across restarts;
- * the Cloudflare deployment uses {@link KvRelayPersistence} instead.
+ * the Cloudflare deployment uses {@link KvRelayPersistence} instead. The map
+ * contains active messages only; dequeue removes drained messages from it.
  */
 import type { RelayEnvelope, RelayPersistence } from "./persistence";
 
