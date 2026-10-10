@@ -39,6 +39,7 @@ jobs:
   validate-release:
     name: Validate Release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       deployable: ${{ steps.validate.outputs.deployable }}
       commit: ${{ steps.validate.outputs.commit }}
@@ -124,6 +125,7 @@ jobs:
   production-deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     needs: validate-release
     if: needs.validate-release.outputs.deployable == 'true'
     environment: production
@@ -340,6 +342,7 @@ jobs:
   production-rollback:
     name: Rollback Production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [validate-release, production-deploy]
     if: needs.production-deploy.result == 'failure'
     environment: production
@@ -551,6 +554,7 @@ jobs:
   post-deployment-verification:
     name: Post-Deployment Verification
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [validate-release, production-deploy]
     if: success()
     environment: production
