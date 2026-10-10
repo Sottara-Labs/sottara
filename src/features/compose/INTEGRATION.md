@@ -89,12 +89,13 @@ export function MailUI() {
 
 ✅ **Valid inputs:**
 
-- Hush addresses: `SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA`
 - Stellar G-addresses: `GBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA`
 - Federation: `alice*stellar.org`, `bob*example.com`
 - Contact aliases: `alice_smith`, `bob-jones`, `charlie.brown`
 
 ❌ **Invalid inputs:**
+
+- Secret-key-shaped inputs: 56 alphanumeric characters starting with `S` (case-insensitive); rejected before remote resolution without echoing the value in the error
 
 - Email addresses: `alice@example.com` (use federation format instead)
 - Short aliases: `ab` (minimum 3 chars)
