@@ -51,9 +51,18 @@ export function deriveBetaSecurityStatus({
   ].find(([, outcome]) => outcome === "failure");
 
   if (failedStep) {
+export function deriveBetaSecurityStatus({ cryptoOutcome, securityOutcome, evidence } = {}) {
+  if (cryptoOutcome === "failure") {
     return {
       status: "fail",
       message: `${failedStep[0]} failed`,
+    };
+  }
+
+  if (securityOutcome === "failure") {
+    return {
+      status: "fail",
+      message: "Security regression tests failed",
     };
   }
 
