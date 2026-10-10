@@ -18,6 +18,8 @@ const evidence = existsSync(evidencePath) ? JSON.parse(readFileSync(evidencePath
 
 const derived = deriveBetaSecurityStatus({
   cryptoOutcome: readArg("--crypto") ?? "failure",
+  cryptoEvidenceOutcome: readArg("--crypto-evidence") ?? "failure",
+  securityRegressionOutcome: readArg("--security-regression") ?? "failure",
   evidence,
 });
 

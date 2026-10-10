@@ -38,11 +38,22 @@ export function deriveSecretScanStatus({
   return { status: "pass", message: null };
 }
 
-export function deriveBetaSecurityStatus({ cryptoOutcome, evidence } = {}) {
-  if (cryptoOutcome === "failure") {
+export function deriveBetaSecurityStatus({
+  cryptoOutcome,
+  cryptoEvidenceOutcome = "success",
+  securityRegressionOutcome = "success",
+  evidence,
+} = {}) {
+  const failedStep = [
+    ["Crypto or managed-wallet tests", cryptoOutcome],
+    ["Crypto misuse regression evidence", cryptoEvidenceOutcome],
+    ["Security regression evidence", securityRegressionOutcome],
+  ].find(([, outcome]) => outcome === "failure");
+
+  if (failedStep) {
     return {
       status: "fail",
-      message: "Crypto or managed-wallet tests failed",
+      message: `${failedStep[0]} failed`,
     };
   }
 
@@ -80,7 +91,12 @@ export function deriveBetaSecurityStatus({ cryptoOutcome, evidence } = {}) {
     };
   }
 
-  if (cryptoOutcome === "success" && evidence.status === "pass") {
+  if (
+    cryptoOutcome === "success" &&
+    cryptoEvidenceOutcome === "success" &&
+    securityRegressionOutcome === "success" &&
+    evidence.status === "pass"
+  ) {
     return { status: "pass", message: null };
   }
 
