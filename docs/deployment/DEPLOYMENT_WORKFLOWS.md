@@ -27,9 +27,11 @@ The deployment system consists of three workflows:
 
 **Security:**
 
-- Uses the `preview` GitHub Environment
-- Verifies no production secrets are available
-- Preview environments have limited functionality
+- Does not use a GitHub Environment; isolation is enforced directly in `.github/workflows/pr-preview-deploy.yml`:
+  - **Fork guard:** Deploy steps are skipped for fork pull requests (`IS_FORK != 'true'`), preventing external code from accessing deploy credentials.
+  - **Production secret absence check:** Explicit verification step asserts that no production secrets (`STEALTH_CURSOR_SECRET`) are present.
+  - **Ephemeral preview resources:** Each pull request receives its own isolated deployment name (`stealth-mail-pr-<number>`) and the teardown job deletes it on PR close.
+  - **Limited functionality:** Preview deployments run with emulated/preview configurations and lack production state.
 
 **Commands:**
 
