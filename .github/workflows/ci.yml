@@ -559,6 +559,9 @@ jobs:
     name: Performance Budget
     needs: [client-checks]
     runs-on: ubuntu-latest
+    # Keep a wedged dev server or load runner from consuming the default
+    # six-hour GitHub Actions budget while leaving room for dependency setup.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -573,10 +576,13 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
+        timeout-minutes: 10
         run: bun install --frozen-lockfile
 
       - name: Start dev server
-        run: bun run dev &
+        run: |
+          setsid bun run dev &
+          echo $! > /tmp/sottara-beta-performance.pid
         env:
           STEALTH_AUTH_ALLOW_HEADER_ONLY: "1"
 
@@ -584,6 +590,7 @@ jobs:
         run: npx --yes wait-on@8.0.1 http://127.0.0.1:5173 --timeout 120000
 
       - name: Load & performance scenarios
+        timeout-minutes: 15
         run: npm run test:load
         env:
           API_URL: http://127.0.0.1:5173
@@ -591,6 +598,13 @@ jobs:
           LOAD_BUDGET_MAX_P90_MS: "1200"
           LOAD_BUDGET_MAX_P99_MS: "2500"
           LOAD_BUDGET_MIN_RATE_LIMIT_HITS: "1"
+
+      - name: Stop dev server
+        if: always()
+        run: |
+          if [ -f /tmp/sottara-beta-performance.pid ]; then
+            kill -- -"$(cat /tmp/sottara-beta-performance.pid)" 2>/dev/null || true
+          fi
 
       - name: Write gate result (pass)
         if: success()
