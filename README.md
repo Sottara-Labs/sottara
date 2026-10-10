@@ -102,6 +102,11 @@ bun run lint               # lint
 bun x tsc --noEmit         # TypeScript types
 bun run test               # unit tests
 bun run build              # production bundle / worker build
+bun run test:security      # security and authorization regressions
+bun run test:e2e           # Chromium end-to-end browser flows
+bun run test:visual        # cross-browser visual regressions
+bun run test:load          # relay/API load and performance budget
+bun run ci:verify-drift    # generated/configuration drift checks
 ```
 
 Contract-focused work should also run the relevant commands in [`contracts/soroban/`](contracts/soroban/). See [contributor setup](CONTRIBUTING.md) for the repository workflow and [security verification](docs/security/README.md) for security-specific checks.
