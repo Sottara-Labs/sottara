@@ -1945,7 +1945,7 @@ function SettingsField({
                 disabled={isSaving}
                 placeholder={placeholder}
                 className={cn(
-                  "w-full rounded-md border bg-surface-recessed/20 px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 transition-colors",
+                  "w-full rounded-md border bg-surface-recessed/20 px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus-visible:ring-2 focus-visible:ring-emerald-400 transition-colors",
                   error ? "border-rose-500/50" : "border-surface-tint/10",
                 )}
               />
