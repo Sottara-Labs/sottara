@@ -21,6 +21,7 @@ export const REQUIRED_GATES = Object.freeze([
 ]);
 
 export const GATE_OWNERS = Object.freeze({
+  governance: "platform/release",
   "client-checks": "platform/client",
   "contract-checks": "platform/contracts",
   "build-reproducibility": "platform/client",
