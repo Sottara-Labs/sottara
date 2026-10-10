@@ -11,5 +11,6 @@
     "openapi": "scripts/generate-openapi.ts",
     "contractBindings": "scripts/generate-contract-bindings.mjs",
     "wranglerConfig": "scripts/generate-wrangler-config.ts"
-  }
+  },
+  "wrangler": "4.105.0"
 }
