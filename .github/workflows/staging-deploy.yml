@@ -336,6 +336,7 @@ jobs:
   staging-rollback:
     name: Rollback Staging
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: staging-deploy
     # Roll back only when a deployment actually started and failed. A failed
     # prerequisite or skipped deployment must never trigger a rollback.

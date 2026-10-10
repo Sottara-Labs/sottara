@@ -340,6 +340,7 @@ jobs:
   production-rollback:
     name: Rollback Production
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     needs: [validate-release, production-deploy]
     if: needs.production-deploy.result == 'failure'
     environment: production
