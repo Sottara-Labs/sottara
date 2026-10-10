@@ -24,6 +24,24 @@ export interface BetaControlPersistence {
   save(snapshot: BetaControlSnapshotData): Promise<void>;
 }
 
+export class BetaControlPersistenceConflictError extends Error {
+  readonly currentVersion: number;
+
+  constructor(currentVersion: number) {
+    super("Beta control snapshot was modified by another worker");
+    this.name = "BetaControlPersistenceConflictError";
+    this.currentVersion = currentVersion;
+  }
+}
+
+export interface VersionedBetaControlPersistence extends BetaControlPersistence {
+  loadVersioned(): Promise<{
+    snapshot: BetaControlSnapshotData | null;
+    version: number;
+  }>;
+  saveVersioned(snapshot: BetaControlSnapshotData, expectedVersion: number): Promise<number>;
+}
+
 export interface BetaControlSnapshotData {
   killSwitches: Record<string, KillSwitchRecord>;
   flags: Record<string, FeatureFlag>;
@@ -74,6 +92,7 @@ export class BetaControlStore {
   private audit: BetaControlAuditEvent[] = [];
   private mutex: Promise<unknown> = Promise.resolve();
   private persistence: BetaControlPersistence;
+  private persistenceVersion = 0;
 
   constructor(persistence?: BetaControlPersistence) {
     this.persistence = persistence ?? new MemoryPersistence();
@@ -87,24 +106,56 @@ export class BetaControlStore {
   }
 
   async init(): Promise<void> {
-    const loaded = await this.persistence.load();
+    const versioned = this.persistence as Partial<VersionedBetaControlPersistence>;
+    const loadedVersioned = versioned.loadVersioned ? await versioned.loadVersioned() : null;
+    const loaded = loadedVersioned ? loadedVersioned.snapshot : await this.persistence.load();
+    if (loadedVersioned) this.persistenceVersion = loadedVersioned.version;
     if (loaded) {
-      this.killSwitches = new Map(Object.entries(loaded.killSwitches));
-      this.flags = new Map(Object.entries(loaded.flags));
-      this.cohorts = new Map(Object.entries(loaded.cohorts));
-      this.invites = new Map(Object.entries(loaded.invites));
-      this.audit = loaded.audit ?? [];
+      this.applySnapshot(loaded);
     }
   }
 
-  private async persist(): Promise<void> {
-    await this.persistence.save({
+  private applySnapshot(loaded: BetaControlSnapshotData): void {
+    this.killSwitches = new Map(Object.entries(loaded.killSwitches));
+    this.flags = new Map(Object.entries(loaded.flags));
+    this.cohorts = new Map(Object.entries(loaded.cohorts));
+    this.invites = new Map(Object.entries(loaded.invites));
+    this.audit = loaded.audit ?? [];
+  }
+
+  private snapshot(): BetaControlSnapshotData {
+    return {
       killSwitches: Object.fromEntries(this.killSwitches),
       flags: Object.fromEntries(this.flags),
       cohorts: Object.fromEntries(this.cohorts),
       invites: Object.fromEntries(this.invites),
       audit: this.audit,
-    });
+    };
+  }
+
+  private async persist(): Promise<void> {
+    const snapshot = this.snapshot();
+    const versioned = this.persistence as Partial<VersionedBetaControlPersistence>;
+    try {
+      if (versioned.saveVersioned) {
+        this.persistenceVersion = await versioned.saveVersioned(snapshot, this.persistenceVersion);
+      } else {
+        await this.persistence.save(snapshot);
+      }
+    } catch (error) {
+      if (error instanceof BetaControlPersistenceConflictError) {
+        const current = await versioned.loadVersioned?.();
+        if (current?.snapshot) this.applySnapshot(current.snapshot);
+        if (current) this.persistenceVersion = current.version;
+        throw new ApiError(
+          409,
+          "conflict",
+          "Beta controls were modified by another worker; reload and retry.",
+          { currentVersion: error.currentVersion },
+        );
+      }
+      throw error;
+    }
   }
 
   private appendAudit(event: Omit<BetaControlAuditEvent, "id" | "at">): void {

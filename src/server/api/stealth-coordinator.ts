@@ -29,6 +29,7 @@ import type {
   AccountDeletionRequest,
   AccountExport,
 } from "./domain";
+import type { BetaControlSnapshotData } from "./beta-controls/store";
 import { toPublicProfile, toPublicUser } from "./domain";
 import type {
   AcquireIdempotencyResult,
@@ -72,6 +73,7 @@ export class StealthCoordinator extends DurableObjectBase {
   // runtime gating behavior, so correctness doesn't depend on unverified
   // assumptions about how `ctx.storage` schedules concurrent callers.
   private readonly locks = new Map<string, Promise<unknown>>();
+  private static readonly BETA_CONTROL_SNAPSHOT_KEY = "beta-controls:snapshot";
 
   constructor(ctx: DurableObjectState, env: any) {
     super(ctx, env);
@@ -94,6 +96,34 @@ export class StealthCoordinator extends DurableObjectBase {
       case "integrity-check":
         return integrityCheck(storage, families, options);
     }
+  }
+
+  async getBetaControlSnapshot(): Promise<{
+    snapshot: BetaControlSnapshotData | null;
+    version: number;
+  }> {
+    const stored = (await this.ctx.storage.get(StealthCoordinator.BETA_CONTROL_SNAPSHOT_KEY)) as
+      | { snapshot: BetaControlSnapshotData; version: number }
+      | undefined;
+    return stored?.snapshot ? stored : { snapshot: null, version: stored?.version ?? 0 };
+  }
+
+  async saveBetaControlSnapshot(
+    snapshot: BetaControlSnapshotData,
+    expectedVersion: number,
+  ): Promise<{ ok: true; version: number } | { ok: false; currentVersion: number }> {
+    return this.runExclusive(StealthCoordinator.BETA_CONTROL_SNAPSHOT_KEY, async () => {
+      const current = await this.getBetaControlSnapshot();
+      if (current.version !== expectedVersion) {
+        return { ok: false, currentVersion: current.version };
+      }
+      const version = current.version + 1;
+      await this.ctx.storage.put(StealthCoordinator.BETA_CONTROL_SNAPSHOT_KEY, {
+        snapshot,
+        version,
+      });
+      return { ok: true, version };
+    });
   }
 
   private runExclusive<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
