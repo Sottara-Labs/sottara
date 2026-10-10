@@ -97,14 +97,14 @@ jobs:
           # Scan for plaintext secrets in changed files
           echo "Scanning commit $COMMIT_SHA for plaintext secrets..."
           SECRETS_FOUND=false
-          git diff-tree --no-commit-id --name-only -r "$COMMIT_SHA" | while read file; do
+          while IFS= read -r file; do
             if [ -f "$file" ]; then
               if grep -qE "(password|secret|token|key|credential).*=.*['\"][^'\"${}]+['\"]" "$file" 2>/dev/null; then
                 echo "WARNING: Potential secret found in $file"
                 SECRETS_FOUND=true
               fi
             fi
-          done
+          done < <(git diff-tree --no-commit-id --name-only -r "$COMMIT_SHA")
 
           if [ "$SECRETS_FOUND" = "true" ]; then
             echo "ERROR: Potential plaintext secrets detected"
