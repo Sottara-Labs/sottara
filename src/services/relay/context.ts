@@ -100,6 +100,7 @@ export async function getRelayService(): Promise<RelayService> {
       {
         evaluator,
         mailbox: repository,
+        repository,
       },
     );
     return globalRelay.__stealthRelayService;
@@ -134,6 +135,7 @@ export async function getRelayService(): Promise<RelayService> {
       evaluator,
       objectStore,
       mailbox: repository,
+      repository,
     },
   );
   return globalRelay.__stealthRelayService;
