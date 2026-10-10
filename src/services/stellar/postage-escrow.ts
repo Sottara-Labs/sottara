@@ -455,11 +455,7 @@ export class PostageEscrowAdapter {
         const status = res.status;
         if (status === "SUCCESS") {
           const ledger = res.ledgers?.[0]?.sequence ?? (Number(res.ledger) || 0);
-          const resultMeta = (res as any).resultMetaXdr;
-          const postage =
-            this.extractPostageFromResult(resultMeta, operation) ??
-            (await this.readOnChainPostage(messageId)) ??
-            undefined;
+          const postage = (await this.readOnChainPostage(messageId)) ?? undefined;
           return {
             postage,
             confirmation: {
@@ -478,13 +474,6 @@ export class PostageEscrowAdapter {
       await this.sleep(sleepMs);
     }
     return null;
-  }
-
-  private extractPostageFromResult(
-    _resultMeta: string | undefined,
-    _operation: PostageOperation,
-  ): ChainPostage | undefined {
-    return undefined;
   }
 
   private sleep(ms: number): Promise<void> {

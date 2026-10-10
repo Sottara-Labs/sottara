@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PostageEscrowAdapter,
   classifyRetry,
@@ -207,5 +207,38 @@ describe("PostageEscrowAdapter", () => {
 
     const reclaim = await adapter.reclaimEscrow(messageId, sender);
     expect(reclaim.chainStatus).toBe("not_submitted");
+  });
+
+  it("resolves postage from the on-chain fallback after a successful transaction", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    const postage = {
+      amount: 1000n,
+      created_at: 10n,
+      dispute_until: 20n,
+      expires_at: 30n,
+      fee: 10n,
+      recipient: "G" + "A".repeat(55),
+      sender: "G" + "B".repeat(55),
+      status: 0,
+    };
+    const readOnChainPostage = vi.fn().mockResolvedValue(postage);
+    const getTransaction = vi.fn().mockResolvedValue({
+      status: "SUCCESS",
+      ledger: 42,
+      resultMetaXdr: "unused",
+    });
+
+    (adapter as any).readOnChainPostage = readOnChainPostage;
+    (adapter as any).makeRpcServer = () => ({ getTransaction });
+    (adapter as any).sleep = vi.fn();
+
+    const confirmed = await (adapter as any).confirm("tx-hash", "a".repeat(64), "submit");
+
+    expect(confirmed).toEqual({
+      postage,
+      confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
+    });
+    expect(readOnChainPostage).toHaveBeenCalledWith("a".repeat(64));
+    expect(getTransaction).toHaveBeenCalledWith("tx-hash");
   });
 });
