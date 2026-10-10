@@ -17,6 +17,7 @@ jobs:
   check-release-gates:
     name: Check Release Gates
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     outputs:
       releasable: ${{ steps.check.outputs.releasable }}
     steps:
@@ -94,6 +95,7 @@ jobs:
   staging-deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: check-release-gates
     if: needs.check-release-gates.outputs.releasable == 'true'
     environment: staging
@@ -124,11 +126,12 @@ jobs:
         \ ]; then\n    echo \"ERROR: Required secret $secret is not set\"\n    exit\
         \ 1\n  fi\ndone\n\necho \"✓ All required secrets are available\"\n"
     - name: Run migrations
+      timeout-minutes: 20
       run: 'echo "Running database migrations..."
 
-        npm run migrations:integrity-check
+        bun run migrations:integrity-check
 
-        npm run migrations:forward -- --approval approved
+        bun run migrations:forward -- --approval approved
 
         '
       env:
@@ -167,11 +170,12 @@ jobs:
         \n  exit 1\nfi\n\necho \"✓ API contract check passed (HTTP $OPENAPI_STATUS)\"\
         \n"
     - name: Run migration rollback test
+      timeout-minutes: 20
       run: 'echo "Testing migration rollback..."
 
-        npm run migrations:rollback -- --target-version 1 --approval approved
+        bun run migrations:rollback -- --target-version 1 --approval approved
 
-        npm run migrations:forward -- --approval approved
+        bun run migrations:forward -- --approval approved
 
         echo "✓ Migration rollback test passed"
 
