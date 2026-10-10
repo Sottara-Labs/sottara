@@ -158,6 +158,25 @@ jobs:
           '
         retention-days: 7
         if-no-files-found: ignore
+    - name: OpenAPI Compatibility
+      if: env.FORK_PR != 'true'
+      timeout-minutes: 10
+      run: "mkdir -p /tmp/optic-env\ncd /tmp/optic-env\ncat > package.json << 'EOF'\n\
+        {\n  \"name\": \"optic-env\",\n  \"version\": \"1.0.0\",\n  \"overrides\"\
+        : {\n    \"ajv\": \">=8.17.1\",\n    \"ajv-errors\": \">=3.0.0\"\n  }\n}\n\
+        EOF\nnpm install --save-exact \"@useoptic/optic@${{ env.OPTIC_VERSION }}\"\
+        \ --prefer-online\ncd \"$GITHUB_WORKSPACE\"\n/tmp/optic-env/node_modules/.bin/optic\
+        \ diff openapi.json --base origin/main --check\n"
+      env:
+        OPTIC_TOKEN: ${{ secrets.OPTIC_TOKEN }}
+    - name: Upload Client Artifacts
+      if: success()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: client-dist
+        path: dist/
+        retention-days: 1
+    timeout-minutes: 45
   contract-checks:
     name: Contract Checks
     runs-on: ubuntu-latest
