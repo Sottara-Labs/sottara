@@ -28,11 +28,12 @@ describe("recipientResolver", () => {
       expect(result.state).not.toBe("invalid");
     });
 
-    it("should accept valid Hush S-addresses", async () => {
+    it("should reject Stellar secret keys", async () => {
       const blocked = new Set<string>();
-      const validSAddress = "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA";
-      const result = await resolveRecipient(validSAddress, blocked);
-      expect(result.state).not.toBe("invalid");
+      const secret = "S" + "A".repeat(55);
+      const result = await resolveRecipient(secret, blocked);
+      expect(result.state).toBe("invalid");
+      expect(result.message).toContain("Secret keys cannot be used as recipients");
     });
 
     it("should accept federation addresses (name*domain)", async () => {
@@ -164,9 +165,9 @@ describe("recipientResolver", () => {
         desc: "valid G-address",
       },
       {
-        address: "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA",
-        expected: "not invalid",
-        desc: "valid S-address",
+        address: "S" + "A".repeat(55),
+        expected: "invalid",
+        desc: "secret key",
       },
       {
         address: "alice*stellar.org",
