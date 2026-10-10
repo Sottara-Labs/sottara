@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BetaControlService } from "@/server/api/beta-controls/service";
+import { BetaControlStore } from "@/server/api/beta-controls/store";
 import { setBetaControlServiceForTests } from "@/server/api/beta-controls";
 import { enforceCapability } from "@/server/api/beta-controls/guard";
 import { BETA_CAPABILITIES, type BetaCapability } from "@/server/api/beta-controls/types";
@@ -35,7 +36,34 @@ describe("BETA-095 beta control service", () => {
     setBetaControlServiceForTests(makeService());
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     setBetaControlServiceForTests(undefined);
+  });
+
+  it("uses a getRandomValues fallback when randomUUID is unavailable", async () => {
+    let seed = 0;
+    vi.stubGlobal("crypto", {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.fill(seed++);
+        return bytes;
+      },
+    });
+
+    const store = new BetaControlStore();
+    await store.setKillSwitch("signup", "closed", { actor: ADMIN });
+    await store.setKillSwitch("funding", "closed", { actor: ADMIN });
+
+    const ids = store.getAudit().map((event) => event.id);
+    expect(ids).toEqual(["bca_" + "00".repeat(16), "bca_" + "01".repeat(16)]);
+  });
+
+  it("fails explicitly when no cryptographically secure source is available", async () => {
+    vi.stubGlobal("crypto", {});
+
+    const store = new BetaControlStore();
+    await expect(store.setKillSwitch("signup", "closed", { actor: ADMIN })).rejects.toThrow(
+      "cryptographically secure random source is unavailable",
+    );
   });
 
   describe("kill switches fail closed", () => {
