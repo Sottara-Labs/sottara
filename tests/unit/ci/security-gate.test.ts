@@ -27,6 +27,28 @@ describe("BETA-088 security gate derivation", () => {
     expect(result.status).toBe("fail");
   });
 
+  it("fails when the crypto misuse regression evidence step fails", () => {
+    const result = deriveBetaSecurityStatus({
+      cryptoOutcome: "success",
+      cryptoEvidenceOutcome: "failure",
+      securityRegressionOutcome: "success",
+      evidence: { status: "pass" },
+    });
+    expect(result.status).toBe("fail");
+    expect(result.message).toMatch(/crypto misuse/i);
+  });
+
+  it("fails when the security regression evidence step fails", () => {
+    const result = deriveBetaSecurityStatus({
+      cryptoOutcome: "success",
+      cryptoEvidenceOutcome: "success",
+      securityRegressionOutcome: "failure",
+      evidence: { status: "pass" },
+    });
+    expect(result.status).toBe("fail");
+    expect(result.message).toMatch(/security regression/i);
+  });
+
   it("passes only when crypto succeeded and evidence has no blocked controls", () => {
     const result = deriveBetaSecurityStatus({
       cryptoOutcome: "success",
