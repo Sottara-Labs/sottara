@@ -73,7 +73,7 @@ jobs:
         run: |
           # Deploy using the Vite-compiled worker output
           # The Vite plugin writes dist/server/wrangler.json with the compiled worker
-          npx wrangler deploy \
+          npx wrangler@4.105.0 deploy \
             --config dist/server/wrangler.json \
             --name "stealth-mail-pr-${{ github.event.pull_request.number }}"
         env:
@@ -150,7 +150,7 @@ jobs:
 
       - name: Delete preview deployment
         run: |
-          npx wrangler delete \
+          npx wrangler@4.105.0 delete \
             --config dist/server/wrangler.json \
             --name "stealth-mail-pr-${{ github.event.pull_request.number }}" \
             --yes

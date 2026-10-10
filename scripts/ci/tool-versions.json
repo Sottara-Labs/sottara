@@ -6,6 +6,7 @@
   "optic": "1.0.9",
   "miniflare": "3.20241218.0",
   "sorobanSdk": "26",
+  "wrangler": "4.105.0",
   "generators": {
     "routeTree": "scripts/generate-route-tree.ts",
     "openapi": "scripts/generate-openapi.ts",

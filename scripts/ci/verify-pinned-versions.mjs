@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { readInstalledPlaywrightVersion } from "./verify-playwright-version.mjs";
+import { readInstalledWranglerVersion } from "./verify-wrangler-version.mjs";
 import { assertRustPin } from "./verify-rust-version.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -50,6 +51,7 @@ for (const [envKey, tvKey] of [
   ["NODE_VERSION", "node"],
   ["RUST_VERSION", "rust"],
   ["OPTIC_VERSION", "optic"],
+  ["WRANGLER_VERSION", "wrangler"],
 ]) {
   const m = ciYml.match(new RegExp(`^\\s*${envKey}:\\s*"([^"]+)"`, "m"));
   if (!m) {
@@ -71,6 +73,22 @@ if (installedPlaywright) {
   );
 } else {
   problems.push("- could not resolve installed @playwright/test version");
+}
+
+const installedWrangler = readInstalledWranglerVersion();
+if (installedWrangler) {
+  expect("installed wrangler == tool-versions.wrangler", installedWrangler, toolVersions.wrangler);
+} else {
+  problems.push("- could not resolve installed wrangler version");
+}
+
+for (const workflow of ["production-deploy.yml", "staging-deploy.yml", "pr-preview-deploy.yml"]) {
+  const content = read(`.github/workflows/${workflow}`);
+  if (/\bnpx\s+wrangler\s+/.test(content)) {
+    problems.push(`- .github/workflows/${workflow} contains unpinned npx wrangler`);
+  } else {
+    ok.push(`- .github/workflows/${workflow}: all wrangler invocations are version-pinned`);
+  }
 }
 
 if (!existsSync(resolve(ROOT, "rust-toolchain.toml"))) {

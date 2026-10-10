@@ -231,7 +231,7 @@ jobs:
         run: |
           # The Cloudflare Vite plugin compiles src/server.ts → dist/server/
           # Deploy using the compiled worker output with a staging-specific name
-          npx wrangler deploy \
+          npx wrangler@4.105.0 deploy \
             --config dist/server/wrangler.json \
             --name stealth-mail-staging
         env:
@@ -373,7 +373,7 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
-          npx wrangler deploy \
+          npx wrangler@4.105.0 deploy \
             --config dist/server/wrangler.json \
             --name stealth-mail-staging
 
