@@ -24,6 +24,8 @@ permissions:
 env:
   BUN_VERSION: "1.3.14"
   NODE_VERSION: "24"
+  STELLAR_CLI_VERSION: "28.1.0"
+  STELLAR_CLI_SHA256: "C1680DEEE94301D33ADA7A17F98411E642A4248C727AFBD2E43050D345746462"
 
 # Serialize all operator-triggered runs that share the testnet environment.
 concurrency:
@@ -65,7 +67,15 @@ jobs:
           key: soroban-live-${{ hashFiles('contracts/soroban/**/Cargo.lock') }}
 
       - name: Install Stellar CLI
-        run: curl -sSfL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-linux-x64.tar.gz | tar -xz -C /usr/local/bin
+        run: |
+          set -euo pipefail
+          archive="stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          url="https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/${archive}"
+          curl -sSfL "$url" -o /tmp/stellar-cli.tar.gz
+          echo "${STELLAR_CLI_SHA256}  /tmp/stellar-cli.tar.gz" | sha256sum -c -
+          tar -xz -C /usr/local/bin -f /tmp/stellar-cli.tar.gz
+          stellar --version | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Pinned Stellar CLI version: ${STELLAR_CLI_VERSION}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run integration gate
         run: npx tsx scripts/stellar/smoke/integration-gate.ts
