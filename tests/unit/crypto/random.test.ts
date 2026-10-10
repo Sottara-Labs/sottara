@@ -25,7 +25,7 @@ describe("crypto-secure message id generation (#1693)", () => {
   it("supports base64url encoding", () => {
     const id = generateMessageId("base64url");
     expect(id).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(id.length).toBeGreaterThanOrEqual(MESSAGE_ID_BYTES);
+    expect(id.length).toBe(22);
     expect(id).not.toContain("=");
   });
 
@@ -45,5 +45,15 @@ describe("crypto-secure message id generation (#1693)", () => {
     expect(isValidMessageId("zzzz")).toBe(false);
     expect(isValidMessageId("00")).toBe(false); // wrong length
     expect(isValidMessageId("not!valid")).toBe(false);
+  });
+
+  it("accepts canonical hex and base64url ids only at their exact lengths", () => {
+    const hex = generateMessageId("hex");
+    const base64url = generateMessageId("base64url");
+
+    expect(isValidMessageId(hex, "hex")).toBe(true);
+    expect(isValidMessageId(base64url, "base64url")).toBe(true);
+    expect(isValidMessageId(base64url.slice(0, -1), "base64url")).toBe(false);
+    expect(isValidMessageId(`${base64url}A`, "base64url")).toBe(false);
   });
 });
