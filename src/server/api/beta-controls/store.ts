@@ -48,10 +48,23 @@ function nowIso() {
 
 function genId(prefix: string) {
   const rand =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2);
+    typeof globalThis.crypto !== "undefined" && typeof globalThis.crypto.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : secureRandomId();
   return `${prefix}_${rand}`;
+}
+
+function secureRandomId(): string {
+  if (
+    typeof globalThis.crypto === "undefined" ||
+    typeof globalThis.crypto.getRandomValues !== "function"
+  ) {
+    throw new Error("cryptographically secure random source is unavailable");
+  }
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  let id = "";
+  for (const byte of bytes) id += byte.toString(16).padStart(2, "0");
+  return id;
 }
 
 /**
