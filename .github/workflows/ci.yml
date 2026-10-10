@@ -201,6 +201,7 @@ jobs:
   contract-checks:
     name: Contract Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -216,11 +217,13 @@ jobs:
           workspaces: contracts/soroban
 
       - name: Test Contracts
+        timeout-minutes: 30
         run: |
           cd contracts/soroban
           cargo test --workspace --locked
 
       - name: Build Contracts
+        timeout-minutes: 30
         run: |
           cd contracts/soroban
           cargo build --target wasm32v1-none --release --locked
