@@ -62,6 +62,10 @@ export interface RelayNode {
   publicKey: string;
 }
 
+export interface FederationResolver {
+  resolveRelay(domain: string): Promise<Pick<RelayNode, "endpoint" | "publicKey"> | null>;
+}
+
 export type ActionableErrorCode =
   | "ERR_DOMAIN_NOT_FOUND"
   | "ERR_UNAUTHORIZED"
@@ -195,14 +199,21 @@ export class FederationDeliveryService {
  */
 export async function resolveRelayNodeViaFederation(
   domain: string,
-  resolver?: any,
+  resolver?: FederationResolver,
 ): Promise<RelayNode | null> {
+  if (!resolver) return null;
+
   try {
     const targetDomain = domain.toLowerCase().trim();
+    if (!targetDomain) return null;
+
+    const record = await resolver.resolveRelay(targetDomain);
+    if (!record?.endpoint || !record.publicKey) return null;
+
     return {
       domain: targetDomain,
-      endpoint: `https://${targetDomain}/api/v1/relay`,
-      publicKey: `relay-key-${targetDomain}`,
+      endpoint: record.endpoint,
+      publicKey: record.publicKey,
     };
   } catch {
     return null;
