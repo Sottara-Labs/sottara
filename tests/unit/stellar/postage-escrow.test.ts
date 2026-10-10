@@ -252,6 +252,29 @@ describe("PostageEscrowAdapter", () => {
 
     const confirmation = await (adapter as any).confirm("tx-hash", "a".repeat(64));
     expect(confirmation).toEqual({
+  it("resolves postage from the on-chain record after confirmation", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    const postage = {
+      message_id: Buffer.from("a".repeat(64), "hex"),
+      sender: `G${"B".repeat(55)}`,
+      recipient: `G${"A".repeat(55)}`,
+      amount: 1000n,
+      fee: 10n,
+      created_at: 1n,
+      expires_at: 2n,
+      status: 0,
+    };
+    vi.spyOn(adapter as any, "makeRpcServer").mockReturnValue({
+      getTransaction: vi.fn().mockResolvedValue({
+        status: "SUCCESS",
+        ledger: 42,
+      }),
+    });
+    vi.spyOn(adapter, "readOnChainPostage").mockResolvedValue(postage as any);
+
+    const result = await (adapter as any).confirm("tx-hash", "a".repeat(64), 1, 0);
+
+    expect(result).toMatchObject({
       postage,
       confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
     });
