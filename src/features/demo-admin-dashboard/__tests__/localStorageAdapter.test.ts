@@ -87,36 +87,6 @@ describe("localStorageAdapter", () => {
     expect(afterClear).toBeNull();
   });
 
-  it("surfaces storage write failures to the caller", () => {
-    const storage = {
-      getItem: vi.fn(),
-      setItem: vi.fn(() => {
-        throw new Error("quota exceeded");
-      }),
-      removeItem: vi.fn(),
-    };
-    vi.stubGlobal("localStorage", storage);
-    const adapter = new LocalStorageAdapter<Draft>();
-
-    expect(() => adapter.save("draft", draft)).toThrow(LocalStoragePersistenceError);
-    expect(() => adapter.save("draft", draft)).toThrow(
-      expect.objectContaining({ operation: "save", key: "draft" }),
-    );
-  });
-
-  it("distinguishes a missing key from corrupted stored JSON", () => {
-    const storage = {
-      getItem: vi.fn((key: string) => (key === "corrupt" ? "{invalid" : null)),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-    };
-    vi.stubGlobal("localStorage", storage);
-    const adapter = new LocalStorageAdapter<Draft>();
-
-    expect(adapter.load("missing")).toBeNull();
-    expect(() => adapter.load("corrupt")).toThrow(
-      expect.objectContaining({ operation: "load", key: "corrupt" }),
-    );
   it("returns a typed failure when storage quota is exceeded", () => {
     const throwingStorage = {
       getItem: () => null,

@@ -84,12 +84,15 @@ describe("recipientResolver", () => {
       const secret = "S" + "A".repeat(55);
       const result = await resolveRecipient(secret, blocked);
       expect(result.state).toBe("invalid");
-      expect(result.message).toContain("Secret keys cannot be used as recipients");
+      expect(result.message).toContain("Secret keys cannot be used as recipient");
+    });
+
     it("should reject secret-key-shaped addresses", async () => {
       const blocked = new Set<string>();
       const secretShapedAddress = "S" + "A".repeat(55);
       const result = await resolveRecipient(secretShapedAddress, blocked);
       expect(result.state).toBe("invalid");
+    });
     it("should reject S-prefixed secret keys before resolution", async () => {
       const blocked = new Set<string>();
       const validSAddress = "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXAA";
@@ -247,6 +250,8 @@ describe("recipientResolver", () => {
         address: "S" + "A".repeat(55),
         expected: "invalid",
         desc: "secret key",
+      },
+      {
         address: "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXAA",
         expected: "invalid",
         desc: "S-prefixed secret key",

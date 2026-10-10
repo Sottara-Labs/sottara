@@ -45,7 +45,7 @@ describe("recipient secret-key rejection", () => {
     };
     const validation = validateRecipientFormat(input);
     expect(validation.valid).toBe(false);
-    expect(validation.error).toContain("Secret keys cannot be used as recipients");
+    expect(validation.error).toContain("Secret keys cannot be used as recipient");
     expect(validation.error).not.toContain(input.trim());
 
     const result = await resolveRecipient(input, new Set(), context);

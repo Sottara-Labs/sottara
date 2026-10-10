@@ -70,16 +70,7 @@ function genId(prefix: string) {
     return `${prefix}_${crypto.randomUUID()}`;
   }
 
-  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
-    throw new Error("cryptographically secure random source is unavailable");
-  }
-
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  const rand = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  const rand =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : generateMessageId();
+  const rand = generateMessageId();
   return `${prefix}_${rand}`;
 }
 

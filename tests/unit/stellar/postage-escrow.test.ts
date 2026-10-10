@@ -252,6 +252,11 @@ describe("PostageEscrowAdapter", () => {
 
     const confirmation = await (adapter as any).confirm("tx-hash", "a".repeat(64));
     expect(confirmation).toEqual({
+      postage,
+      confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
+    });
+  });
+
   it("resolves postage from the on-chain record after confirmation", async () => {
     const adapter = new PostageEscrowAdapter({ config: makeConfig() });
     const postage = {

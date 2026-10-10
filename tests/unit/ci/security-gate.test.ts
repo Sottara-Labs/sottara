@@ -47,6 +47,8 @@ describe("BETA-088 security gate derivation", () => {
     });
     expect(result.status).toBe("fail");
     expect(result.message).toMatch(/security regression/i);
+  });
+
   it("fails when the security regression step fails", () => {
     const result = deriveBetaSecurityStatus({
       cryptoOutcome: "success",

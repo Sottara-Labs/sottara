@@ -17,7 +17,11 @@ function makeStorage() {
     setItem: (key: string, value: string) => void values.set(key, value),
     removeItem: (key: string) => void values.delete(key),
     clear: () => values.clear(),
-  } satisfies Storage;
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    get length() {
+      return values.size;
+    },
+  } as Storage;
 }
 
 function makeMail(messageId: string): MailboxDescriptor {
