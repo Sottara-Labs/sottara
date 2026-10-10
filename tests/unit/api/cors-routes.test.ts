@@ -1,9 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Route as HealthRoute } from "../../../src/routes/api/v1/health";
 import { corsPolicyFromEnv, csrfEarlyResponse } from "../../../src/server/api/cors";
 
 const healthHandler = (HealthRoute.options as any).server?.handlers?.GET;
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("API route CORS integration", () => {
   it("allows every local development port but keeps production restricted", () => {
@@ -44,5 +48,41 @@ describe("API route CORS integration", () => {
     );
 
     expect(response?.status).toBe(403);
+  });
+
+  it("rejects a disallowed origin outside explicit development", () => {
+    vi.stubEnv("STEALTH_ENV", "preview");
+    const policy = corsPolicyFromEnv({
+      STEALTH_ENV: "preview",
+      STEALTH_CORS_ALLOWED_ORIGINS: "https://app.betasmail.com",
+    });
+
+    const response = csrfEarlyResponse(
+      new Request("https://app.betasmail.com/api/v1/profile", {
+        method: "POST",
+        headers: {
+          cookie: "stealth_session=redacted",
+          Origin: "https://attacker.example",
+        },
+      }),
+      policy,
+    );
+
+    expect(response?.status).toBe(403);
+  });
+
+  it("keeps the guard bypass for explicit development requests", () => {
+    vi.stubEnv("STEALTH_ENV", "development");
+    const policy = corsPolicyFromEnv({ STEALTH_ENV: "development" });
+
+    const response = csrfEarlyResponse(
+      new Request("http://localhost:3000/api/v1/profile", {
+        method: "POST",
+        headers: { cookie: "stealth_session=redacted" },
+      }),
+      policy,
+    );
+
+    expect(response).toBeUndefined();
   });
 });
