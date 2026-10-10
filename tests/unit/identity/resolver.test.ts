@@ -49,7 +49,6 @@ describe("BETA-026 (Issue #1933): Production Stealth-Address & Stellar-Federatio
 
   beforeEach(async () => {
     repository = new MemoryApiRepository();
-    (globalThis as any).__stealthApiRepository = repository;
 
     await repository.createUser(ALICE_USER);
     await repository.setProfile({
@@ -76,6 +75,7 @@ describe("BETA-026 (Issue #1933): Production Stealth-Address & Stellar-Federatio
     resolver = new IdentityResolverService({
       positiveTtlMs: 60 * 1000,
       negativeTtlMs: 10 * 1000,
+      repository,
     });
   });
 
@@ -181,6 +181,21 @@ describe("BETA-026 (Issue #1933): Production Stealth-Address & Stellar-Federatio
       expect(result.status).toBe("unknown");
       expect(result.account).toBeNull();
       expect(result.error?.code).toBe("not_found");
+    });
+
+    it("returns offline error result when no repository is configured and does not read globalThis", async () => {
+      delete (globalThis as any).__stealthApiRepository;
+      delete (globalThis as any).__sottaraApiRepository;
+
+      const unconfiguredResolver = new IdentityResolverService({
+        positiveTtlMs: 60 * 1000,
+        negativeTtlMs: 10 * 1000,
+      });
+
+      const result = await unconfiguredResolver.resolve("alice@stealth.me");
+      expect(result.resolved).toBe(false);
+      expect(result.error?.code).toBe("not_found");
+      expect(result.error?.message).toMatch(/Repository not available for local resolution/i);
     });
   });
 
