@@ -30,6 +30,8 @@ import {
   InMemoryNonceStore,
   NonceService,
 } from "@/server/api/auth/nonce-service";
+import type { ApiRepository, InsertEnvelopeResult } from "@/server/api/repository";
+import { InMemoryNonceStore, NonceService } from "@/server/api/auth/nonce-service";
 import type { RelayPersistence } from "./persistence";
 import type { RelayWorker } from "./worker";
 import type { RelayObjectStore } from "./object-store";
@@ -156,7 +158,7 @@ export interface RelayServiceDependencies {
   evaluator: RelayAdmissionEvaluator;
   objectStore?: RelayObjectStore;
   mailbox?: RelayMailboxStore;
-  repository?: any;
+  repository?: ApiRepository;
   now?: () => Date;
 }
 
@@ -233,8 +235,8 @@ export class RelayService {
     return this.config;
   }
 
-  getRepository(): any {
-    return this.deps.repository ?? (this.deps.mailbox as any);
+  getRepository(): ApiRepository | undefined {
+    return this.deps.repository;
   }
 
   isNonceSeen(nonce: string): boolean {
