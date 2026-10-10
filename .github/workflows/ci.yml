@@ -687,6 +687,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     needs: [client-checks]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -708,6 +709,7 @@ jobs:
         run: node scripts/ci/verify-playwright-version.mjs
 
       - name: Install Playwright browsers
+        timeout-minutes: 15
         run: ./node_modules/.bin/playwright install chromium --with-deps
 
       - name: Run E2E tests
