@@ -17,9 +17,16 @@ export type RateLimitConfig = {
   operation: RateLimitOperation;
 };
 
-const RATE_LIMITS: Record<RateLimitType, { max: number; windowSeconds: number }> = {
-  account: { max: 50, windowSeconds: 3600 },
-  ip: { max: 100, windowSeconds: 3600 },
+// Weighted-cost budgets per window: the counter accumulates the operation's
+// cost from RATE_LIMIT_OPERATION_COSTS, so maxWeightedCost is denominated in
+// cost units, not operations (e.g. account admits 50 cost-1 reads, or 5
+// cost-10 paymentTransitions, per hour).
+export const RATE_LIMITS: Record<
+  RateLimitType,
+  { maxWeightedCost: number; windowSeconds: number }
+> = {
+  account: { maxWeightedCost: 50, windowSeconds: 3600 },
+  ip: { maxWeightedCost: 100, windowSeconds: 3600 },
 };
 
 export function canonicalizeSubject(subject: string): string {
@@ -43,7 +50,7 @@ export async function consumeRouteQuota(
   }
 
   const normalizedSubject = type === "account" ? canonicalizeSubject(subject) : subject;
-  const { max, windowSeconds } = RATE_LIMITS[type];
+  const { maxWeightedCost, windowSeconds } = RATE_LIMITS[type];
   const cost = RATE_LIMIT_OPERATION_COSTS[operation];
   const count = await repository.incrementCounter(
     `abuse:${type}:${normalizedSubject}`,
@@ -51,7 +58,7 @@ export async function consumeRouteQuota(
     cost,
   );
 
-  if (count > max) {
+  if (count > maxWeightedCost) {
     return { allowed: false, retryAfterSeconds: windowSeconds };
   }
   return { allowed: true };

@@ -4,6 +4,7 @@ import { MemoryApiRepository } from "../../../src/server/api/memory-repository";
 import {
   consumeRouteQuota,
   RATE_LIMIT_OPERATION_COSTS,
+  RATE_LIMITS,
   checkAuthFailureThrottle,
   recordAuthFailure,
   AUTH_FAILURE_LIMITS,
@@ -34,6 +35,49 @@ describe("weighted route rate limits", () => {
     await expect(
       consumeRouteQuota(repository, "account", "actor", "paymentTransition"),
     ).resolves.toEqual({ allowed: false, retryAfterSeconds: 3600 });
+  });
+
+  it("admits exactly maxWeightedCost cost-1 reads for an account before rejecting", async () => {
+    const repository = new MemoryApiRepository();
+
+    for (
+      let requestNumber = 0;
+      requestNumber < RATE_LIMITS.account.maxWeightedCost;
+      requestNumber += 1
+    ) {
+      await expect(consumeRouteQuota(repository, "account", "actor", "read")).resolves.toEqual({
+        allowed: true,
+      });
+    }
+
+    await expect(consumeRouteQuota(repository, "account", "actor", "read")).resolves.toEqual({
+      allowed: false,
+      retryAfterSeconds: RATE_LIMITS.account.windowSeconds,
+    });
+  });
+
+  it("admits exact number of operations for multi-cost classes (read vs paymentTransition)", async () => {
+    const repository = new MemoryApiRepository();
+
+    // 10 cost-1 reads = 10 units consumed
+    for (let i = 0; i < 10; i += 1) {
+      await expect(consumeRouteQuota(repository, "account", "actor-mix", "read")).resolves.toEqual({
+        allowed: true,
+      });
+    }
+
+    // 4 cost-10 paymentTransitions = 40 units consumed (total 50 units = maxWeightedCost)
+    for (let i = 0; i < 4; i += 1) {
+      await expect(
+        consumeRouteQuota(repository, "account", "actor-mix", "paymentTransition"),
+      ).resolves.toEqual({ allowed: true });
+    }
+
+    // Next read (51st unit) is rejected
+    await expect(consumeRouteQuota(repository, "account", "actor-mix", "read")).resolves.toEqual({
+      allowed: false,
+      retryAfterSeconds: 3600,
+    });
   });
 
   it("keeps operation costs in immutable server configuration", () => {
