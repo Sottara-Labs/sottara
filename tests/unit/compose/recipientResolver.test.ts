@@ -84,6 +84,11 @@ describe("recipientResolver", () => {
       const result = await resolveRecipient(secret, blocked);
       expect(result.state).toBe("invalid");
       expect(result.message).toContain("Secret keys cannot be used as recipients");
+    it("should reject secret-key-shaped addresses", async () => {
+      const blocked = new Set<string>();
+      const secretShapedAddress = "S" + "A".repeat(55);
+      const result = await resolveRecipient(secretShapedAddress, blocked);
+      expect(result.state).toBe("invalid");
     });
 
     it("should accept federation addresses (name*domain)", async () => {
