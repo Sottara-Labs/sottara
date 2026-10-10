@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PostageEscrowAdapter,
+  PostageReadError,
   classifyRetry,
   chainStatusToDomain,
   redactError,
@@ -178,6 +179,66 @@ describe("PostageEscrowAdapter", () => {
     const result = await adapter.checkAllowanceAndBalance("G" + "A".repeat(55), 1000n);
     expect(result.sufficient).toBe(true);
     expect(result.required).toBe("1000");
+  });
+
+  it("distinguishes a missing postage record from contract read failures", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    const makeClient = vi.spyOn(adapter as any, "makeClient").mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        result: {
+          isOk: () => false,
+          unwrapErr: () => new Error("Contract, Error(Contract, #5)"),
+        },
+      }),
+    });
+
+    await expect(adapter.readOnChainPostage("a".repeat(64))).resolves.toBeNull();
+
+    makeClient.mockReturnValue({
+      get: vi.fn().mockResolvedValue({
+        result: {
+          isOk: () => false,
+          unwrapErr: () => new Error("Contract, Error(Contract, #7)"),
+        },
+      }),
+    });
+    await expect(adapter.readOnChainPostage("a".repeat(64))).rejects.toMatchObject({
+      name: "PostageReadError",
+      kind: "contract",
+    });
+
+    makeClient.mockReturnValue({
+      get: vi.fn().mockRejectedValue(new Error("ETIMEDOUT")),
+    });
+    await expect(adapter.readOnChainPostage("a".repeat(64))).rejects.toMatchObject({
+      name: "PostageReadError",
+      kind: "transport",
+    });
+  });
+
+  it("does not report a safe operation as successful when the chain read fails", async () => {
+    const adapter = new PostageEscrowAdapter({
+      config: makeConfig(),
+      managedWallet: {} as never,
+    });
+    (adapter as any).readOnChainPostage = vi
+      .fn()
+      .mockRejectedValue(new PostageReadError("transport", "ETIMEDOUT"));
+
+    const result = await (adapter as any).runOperation(
+      "settle",
+      { type: "postage", senderAddress: "G" + "A".repeat(55), amountStroops: "0" },
+      "G" + "A".repeat(55),
+      "a".repeat(64),
+      async () => {
+        throw new Error("ETIMEDOUT");
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.chainStatus).toBe("failed");
+    expect(result.retryClassification).toBe("safe");
+    expect(result.lastError).toContain("ETIMEDOUT");
   });
 
   it("lifecycle entry points do not touch the chain when not live", async () => {

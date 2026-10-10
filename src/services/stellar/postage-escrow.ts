@@ -139,6 +139,18 @@ export class PostageEscrowUnavailableError extends Error {
   }
 }
 
+export type PostageReadFailureKind = "transport" | "contract";
+
+export class PostageReadError extends Error {
+  readonly kind: PostageReadFailureKind;
+
+  constructor(kind: PostageReadFailureKind, message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "PostageReadError";
+    this.kind = kind;
+  }
+}
+
 export interface PostageEscrowAdapterOptions {
   config: BetaRuntimeConfig;
   managedWallet?: ManagedWalletService;
@@ -220,11 +232,13 @@ export class PostageEscrowAdapter {
       const client = this.makeClient();
       const result = await chainGet(client, messageIdToBuffer(messageId));
       if (result.isOk()) return result.unwrap();
-      const code = extractContractError(result.unwrapErr().message);
+      const error = result.unwrapErr();
+      const code = extractContractError(error.message);
       if (code === PostageError.PostageNotFound) return null;
-      return null;
-    } catch {
-      return null;
+      throw new PostageReadError("contract", redactError(error), { cause: error });
+    } catch (error: unknown) {
+      if (error instanceof PostageReadError) throw error;
+      throw new PostageReadError("transport", redactError(error), { cause: error });
     }
   }
 
@@ -418,9 +432,19 @@ export class PostageEscrowAdapter {
       const lastError = redactError(err);
 
       if (retryClass === "safe") {
-        const chain = await this.readOnChainPostage(messageId);
+        let chain: ChainPostage | null;
+        try {
+          chain = await this.readOnChainPostage(messageId);
+        } catch (readError: unknown) {
+          return {
+            success: false,
+            chainStatus: live ? "failed" : "not_submitted",
+            retryClassification: "safe",
+            lastError: redactError(readError),
+          };
+        }
         return {
-          success: chain !== undefined,
+          success: chain !== null,
           postage: chain ?? undefined,
           chainStatus: chain ? "confirmed" : live ? "failed" : "not_submitted",
           retryClassification: "safe",
