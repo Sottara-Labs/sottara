@@ -506,6 +506,11 @@ export class PostageEscrowAdapter {
         if (status === "SUCCESS") {
           const ledger = res.ledgers?.[0]?.sequence ?? (Number(res.ledger) || 0);
           const postage = (await this.readOnChainPostage(messageId)) ?? undefined;
+          // Postage is resolved from the on-chain record. (The former
+          // extractPostageFromResult stub always returned undefined.)
+          const postage =
+            (await this.readOnChainPostage(messageId)) ??
+            undefined;
           return {
             postage,
             confirmation: {
@@ -666,3 +671,4 @@ export class PostageEscrowAdapter {
 export function mapPostageStatus(chain: ChainPostage): PostageStatus {
   return chainStatusToDomain(chain.status);
 }
+
