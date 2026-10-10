@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   resolveRecipient,
   resolveRecipients,
+  validateRecipientFormat,
   type RecipientResolutionContext,
 } from "@/features/compose/recipientResolver";
 
@@ -73,7 +74,7 @@ describe("recipientResolver", () => {
 
     it("should accept valid Stellar G-addresses", async () => {
       const blocked = new Set<string>();
-      const validGAddress = "GBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA";
+      const validGAddress = "GA7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7G";
       const result = await resolveRecipient(validGAddress, blocked);
       expect(result.state).not.toBe("invalid");
     });
@@ -89,6 +90,20 @@ describe("recipientResolver", () => {
       const secretShapedAddress = "S" + "A".repeat(55);
       const result = await resolveRecipient(secretShapedAddress, blocked);
       expect(result.state).toBe("invalid");
+    it("should reject S-prefixed secret keys before resolution", async () => {
+      const blocked = new Set<string>();
+      const validSAddress = "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXAA";
+      const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+      try {
+        const result = await resolveRecipient(validSAddress, blocked);
+        expect(result.state).toBe("invalid");
+        expect(result.message).toBe("Secret keys cannot be used as recipient addresses");
+        expect(result.message).not.toContain(validSAddress);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
 
     it("should accept federation addresses (name*domain)", async () => {
@@ -213,9 +228,18 @@ describe("recipientResolver", () => {
   });
 
   describe("address validation", () => {
+    it("rejects S-prefixed secret keys without echoing the value", () => {
+      const secret = "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXAA";
+      const result = validateRecipientFormat(secret);
+
+      expect(result.valid).toBe(false);
+      expect(result.error).toBe("Secret keys cannot be used as recipient addresses");
+      expect(result.error).not.toContain(secret);
+    });
+
     const testCases = [
       {
-        address: "GBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXA",
+        address: "GA7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7GTH7QNF7G",
         expected: "not invalid",
         desc: "valid G-address",
       },
@@ -223,6 +247,9 @@ describe("recipientResolver", () => {
         address: "S" + "A".repeat(55),
         expected: "invalid",
         desc: "secret key",
+        address: "SBRPYHIL2CI3WHZDTOOQFC6EB4KJJGUJGU7XYBNBNQ2LMCAKLKZ6DXAA",
+        expected: "invalid",
+        desc: "S-prefixed secret key",
       },
       {
         address: "alice*stellar.org",
