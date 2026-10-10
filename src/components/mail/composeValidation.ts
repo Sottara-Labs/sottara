@@ -18,7 +18,7 @@ export type RecipientReadiness = {
   resolvedAccount?: string; // Hush address if resolved
   policyType?: "allow" | "block" | "default"; // Trust policy
   encryptionKey?: string; // Public key for encryption
-  provenance?: string; // cache source
+  provenance?: string; // cache source and any degraded lookup markers
   cached?: boolean; // is cached
   expiresAt?: string; // expiration ISO timestamp
   keyStatus?: string; // key status from key directory

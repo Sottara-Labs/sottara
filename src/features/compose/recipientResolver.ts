@@ -7,6 +7,9 @@ import {
 import { fetchKeyDirectory } from "./recipientKeyResolution";
 
 export type RecipientResolutionContext = {
+  /** Receive bounded diagnostics for lookup failures without address data. */
+  onDiagnostic?: (diagnostic: RecipientResolutionDiagnostic) => void;
+
   /** Resolve a contact by name or address */
   resolveContact?: (input: string) => Promise<{
     id: string;
@@ -31,6 +34,25 @@ export type RecipientResolutionContext = {
   /** Check if recipient is explicitly blocked */
   isBlockedRecipient?: (address: string) => Promise<boolean>;
 };
+
+export type RecipientResolutionDiagnostic = {
+  source: "contact-lookup" | "federation-resolution" | "identity-resolution";
+  at: string;
+  detail: string;
+};
+
+function emitResolutionDiagnostic(
+  context: RecipientResolutionContext | undefined,
+  source: RecipientResolutionDiagnostic["source"],
+  error: unknown,
+): void {
+  const detail = error instanceof Error ? "Error" : typeof error;
+  context?.onDiagnostic?.({
+    source,
+    at: new Date().toISOString(),
+    detail,
+  });
+}
 
 /**
  * Resolves a single recipient address to determine if it's valid, verified, unknown, or blocked.
@@ -98,6 +120,7 @@ export async function resolveRecipient(
   }
 
   let readiness: RecipientReadiness | null = null;
+  const degradedSources: string[] = [];
 
   // Try to resolve via contact database
   if (context?.resolveContact && !isStellarFormat(normalized)) {
@@ -118,7 +141,8 @@ export async function resolveRecipient(
         };
       }
     } catch (error) {
-      console.warn(`Failed to resolve contact for ${address}:`, error);
+      degradedSources.push("contact-lookup-degraded");
+      emitResolutionDiagnostic(context, "contact-lookup", error);
     }
   }
 
@@ -141,7 +165,8 @@ export async function resolveRecipient(
         };
       }
     } catch (error) {
-      console.warn(`Failed to resolve federation address ${address}:`, error);
+      degradedSources.push("federation-resolution-degraded");
+      emitResolutionDiagnostic(context, "federation-resolution", error);
     }
   }
 
@@ -174,7 +199,8 @@ export async function resolveRecipient(
         };
       }
     } catch (error) {
-      console.warn(`IdentityResolver resolution error for ${address}:`, error);
+      degradedSources.push("identity-resolution-degraded");
+      emitResolutionDiagnostic(context, "identity-resolution", error);
     }
   }
 
@@ -187,6 +213,10 @@ export async function resolveRecipient(
       message: "Recipient address unresolved — verification pending",
       policyType: "default",
     };
+  }
+
+  if (degradedSources.length > 0) {
+    readiness.provenance = [readiness.provenance, ...degradedSources].filter(Boolean).join(",");
   }
 
   // Validate the key status via key directory if we have a known account or Stellar address format
