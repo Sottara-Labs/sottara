@@ -12,6 +12,7 @@ import { ApiError } from "./errors";
  */
 
 const CURSOR_VERSION = 1;
+const CLOCK_SKEW_MS = 60_000;
 const SECRET = () => {
   const secret = process.env.STEALTH_CURSOR_SECRET ?? "";
   return secret;
@@ -133,6 +134,12 @@ export function decodeCursor(
     if (now - payload.iat > options.maxAgeMs || payload.iat > now + 60_000) {
       throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
     }
+  const now = options?.now ?? Date.now();
+  if (!Number.isInteger(payload.iat) || payload.iat > now + CLOCK_SKEW_MS) {
+    throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
+  }
+  if (options?.maxAgeMs !== undefined && now - payload.iat > options.maxAgeMs) {
+    throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
   }
 
   return { continuationKey: payload.key, issuedAt: payload.iat };
