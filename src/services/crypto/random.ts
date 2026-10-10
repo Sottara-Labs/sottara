@@ -78,5 +78,7 @@ export function isValidMessageId(value: string, encoding: MessageIdEncoding = "h
   if (encoding === "hex") {
     return /^[0-9a-f]+$/.test(value) && value.length === MESSAGE_ID_BYTES * 2;
   }
-  return /^[A-Za-z0-9_-]+$/.test(value) && value.length >= MESSAGE_ID_BYTES;
+  // base64url: 16 bytes = exactly 22 unpadded characters
+  if (!/^[A-Za-z0-9_-]{22}$/.test(value)) return false;
+  return Buffer.from(value, "base64url").length === MESSAGE_ID_BYTES;
 }
