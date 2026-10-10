@@ -40,29 +40,22 @@ export function deriveSecretScanStatus({
 
 export function deriveBetaSecurityStatus({
   cryptoOutcome,
+  securityOutcome,
   cryptoEvidenceOutcome = "success",
   securityRegressionOutcome = "success",
   evidence,
 } = {}) {
+  const secOutcome = securityOutcome ?? securityRegressionOutcome;
   const failedStep = [
     ["Crypto or managed-wallet tests", cryptoOutcome],
     ["Crypto misuse regression evidence", cryptoEvidenceOutcome],
-    ["Security regression evidence", securityRegressionOutcome],
+    ["Security regression evidence", secOutcome],
   ].find(([, outcome]) => outcome === "failure");
 
   if (failedStep) {
-export function deriveBetaSecurityStatus({ cryptoOutcome, securityOutcome, evidence } = {}) {
-  if (cryptoOutcome === "failure") {
     return {
       status: "fail",
       message: `${failedStep[0]} failed`,
-    };
-  }
-
-  if (securityOutcome === "failure") {
-    return {
-      status: "fail",
-      message: "Security regression tests failed",
     };
   }
 

@@ -40,6 +40,7 @@ function AdminDashboard() {
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [revokingCode, setRevokingCode] = useState<string | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const adminAddress = "GADMIN777777777777777777777777777777777777777777777777777777";
 
@@ -266,7 +267,7 @@ function AdminDashboard() {
               placeholder="CODE (e.g. BETA_NEW)"
               value={newCode}
               onChange={(e) => setNewCode(e.target.value)}
-              className="px-3 py-1.5 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded-lg text-xs focus:outline-none focus:border-purple-500 uppercase font-mono w-40"
+              className="px-3 py-1.5 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded-lg text-xs focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 uppercase font-mono w-40"
               required
             />
             <input
@@ -274,7 +275,7 @@ function AdminDashboard() {
               placeholder="Reason for creation"
               value={newReason}
               onChange={(e) => setNewReason(e.target.value)}
-              className="px-3 py-1.5 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded-lg text-xs focus:outline-none focus:border-purple-500 w-48"
+              className="px-3 py-1.5 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded-lg text-xs focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 w-48"
               required
             />
             <button
@@ -288,15 +289,38 @@ function AdminDashboard() {
           </form>
         </div>
 
+        {/* Filter Controls Bar */}
+        <div className="p-4 border-b border-border dark:border-neutral-800 bg-card/10 dark:bg-neutral-900/10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <label htmlFor="admin-filter-select" className="text-xs text-muted-foreground dark:text-neutral-500 font-medium">
+              Filter:
+            </label>
+            <select
+              id="admin-filter-select"
+              aria-label="Filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded-lg text-xs focus:outline-none focus:border-purple-500 focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 text-status-neutral dark:text-neutral-200 cursor-pointer"
+            >
+              <option value="all">All Invites</option>
+              <option value="active">Active Only</option>
+              <option value="revoked">Revoked Only</option>
+            </select>
+          </div>
+          <span className="text-[11px] text-muted-foreground dark:text-neutral-500 font-mono">
+            {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length} {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length === 1 ? "invite" : "invites"}
+          </span>
+        </div>
+
         {/* Invites List Table */}
         <div className="overflow-x-auto">
           {loadingInvites ? (
             <div className="p-12 text-center text-xs text-muted-foreground dark:text-neutral-500">
               Loading invite records...
             </div>
-          ) : invites.length === 0 ? (
+          ) : invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length === 0 ? (
             <div className="p-12 text-center text-xs text-muted-foreground dark:text-neutral-500">
-              No invite codes currently registered.
+              No invite codes match the current filter.
             </div>
           ) : (
             <table className="w-full text-left text-xs border-collapse">
@@ -311,7 +335,9 @@ function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {invites.map((invite) => (
+                {invites
+                  .filter((i) => statusFilter === "all" || i.status === statusFilter)
+                  .map((invite) => (
                   <tr
                     key={invite.code}
                     className="border-b border-border/60 dark:border-neutral-800/60 hover:bg-accent/20 dark:hover:bg-neutral-900/20"
@@ -348,7 +374,7 @@ function AdminDashboard() {
                               placeholder="Reason"
                               value={revokeReason}
                               onChange={(e) => setRevokeReason(e.target.value)}
-                              className="px-2 py-1 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded text-[11px] focus:outline-none"
+                              className="px-2 py-1 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded text-[11px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
                               required
                             />
                             <button

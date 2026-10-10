@@ -26,14 +26,22 @@ class MockKVNamespace {
     this.store.set(key, value);
   }
 
-  async list(options: { prefix?: string; cursor?: string }) {
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async list(options: { prefix?: string; cursor?: string; limit?: number }) {
     this.listCalls.push(options);
-    return (
-      this.listPages.shift() ?? {
-        keys: [],
-        list_complete: true,
-      }
-    );
+    if (this.listPages.length > 0) {
+      const page = this.listPages.shift()!;
+      if (page.keys.length > 0) return page;
+    }
+    const prefix = options.prefix ?? "";
+    const keys = [...this.store.keys()]
+      .filter((key) => key.startsWith(prefix))
+      .slice(0, options.limit ?? 1000)
+      .map((name) => ({ name }));
+    return { keys, list_complete: true };
   }
 }
 
@@ -63,16 +71,6 @@ class MockDurableObjectNamespace {
 
   get() {
     return this.coordinator;
-  async delete(key: string): Promise<void> {
-    this.store.delete(key);
-  }
-
-  async list(options: { prefix: string; limit?: number }) {
-    const keys = [...this.store.keys()]
-      .filter((key) => key.startsWith(options.prefix))
-      .slice(0, options.limit ?? 1000)
-      .map((name) => ({ name }));
-    return { keys, list_complete: true };
   }
 }
 
@@ -306,6 +304,8 @@ describe("KvRelayPersistence.listRecipientQueue pagination", () => {
 
     await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
     expect(kv.getCalls).toEqual([key, missingKey]);
+  });
+
   it("dequeues messages and restores queue depth", async () => {
     const kv = new MockKVNamespace();
     const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);

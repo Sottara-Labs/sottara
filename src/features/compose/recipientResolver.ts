@@ -279,15 +279,6 @@ export async function resolveRecipient(
  */
 function isStellarFormat(address: string): boolean {
   return /^G[A-Z2-7]{55}$/i.test(address);
- * Helper to check if address is a Stellar public account (G prefix)
- */
-function isStellarFormat(address: string): boolean {
-  return /^G[A-Z0-9]{55}$/i.test(address);
- * Helper to check if address is already in Stellar account format.
- * Secret keys use the S prefix and must never be treated as accounts.
- */
-function isStellarFormat(address: string): boolean {
-  return /^G[A-Z2-7]{55}$/i.test(address);
 }
 
 /**
@@ -324,15 +315,6 @@ export function validateRecipientFormat(address: string): {
   }
 
   // Secret keys must be rejected before the generic contact-alias fallback.
-  if (/^s[a-z0-9]{55}$/i.test(trimmed)) {
-    return {
-      valid: false,
-      error: "Secret keys cannot be used as recipients. Enter a public Stellar G-address instead.",
-    };
-  // Reject secret keys before the permissive contact-alias fallback.
-  if (/^s[a-z0-9]{55}$/i.test(trimmed)) {
-    return { valid: false, error: "Secret keys cannot be used as recipient addresses" };
-  // Stellar secret keys (S...) must never be accepted as recipients.
   if (/^s[a-z0-9]{55}$/i.test(trimmed)) {
     return {
       valid: false,

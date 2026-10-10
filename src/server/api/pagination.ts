@@ -125,22 +125,14 @@ export function decodeCursor(
     throw new ApiError(400, "bad_request", "Pagination cursor scope does not match this query");
   }
 
-  if (options?.maxAgeMs !== undefined) {
-    const now = options.now ?? Date.now();
-    // iat is REQUIRED for v1 cursors — no silent exemption.
-    if (!Number.isInteger(payload.iat)) {
-      throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
-    }
-    if (now - payload.iat > options.maxAgeMs || payload.iat > now + 60_000) {
-      throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
-    }
   const now = options?.now ?? Date.now();
-  if (!Number.isInteger(payload.iat) || payload.iat > now + CLOCK_SKEW_MS) {
+  if (typeof payload.iat !== "number" || !Number.isInteger(payload.iat) || payload.iat > now + CLOCK_SKEW_MS) {
     throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
   }
-  if (options?.maxAgeMs !== undefined && now - payload.iat > options.maxAgeMs) {
+  const iat = payload.iat;
+  if (options?.maxAgeMs !== undefined && now - iat > options.maxAgeMs) {
     throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
   }
 
-  return { continuationKey: payload.key, issuedAt: payload.iat };
+  return { continuationKey: payload.key, issuedAt: iat };
 }
