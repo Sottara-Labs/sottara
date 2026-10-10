@@ -248,7 +248,7 @@ export class IdentityResolverService {
           if (result.account) {
             this.indexAddress(result.account, cacheKey);
           }
-        } else {
+        } else if (result.error?.code === "not_found") {
           this.setNegativeCache(cacheKey, result);
         }
 
@@ -261,9 +261,8 @@ export class IdentityResolverService {
           isTimeout ? "timeout" : "network_error",
           isTimeout ? "Resolution timed out" : "Identity resolution failed",
           "negative_cache",
-          this.defaultNegativeTtlMs,
+          0,
         );
-        this.setNegativeCache(cacheKey, errorResult);
         return errorResult;
       } finally {
         clearTimeout(timer);
@@ -295,7 +294,7 @@ export class IdentityResolverService {
         if (result.account) {
           this.indexAddress(result.account, cacheKey);
         }
-      } else {
+      } else if (result.error?.code === "not_found") {
         this.setNegativeCache(cacheKey, result);
       }
 
@@ -308,9 +307,8 @@ export class IdentityResolverService {
         isTimeout ? "timeout" : "network_error",
         isTimeout ? "Resolution timed out" : "Identity resolution failed",
         "negative_cache",
-        this.defaultNegativeTtlMs,
+        0,
       );
-      this.setNegativeCache(cacheKey, errorResult);
       return errorResult;
     } finally {
       clearTimeout(timer);
@@ -723,10 +721,10 @@ export class IdentityResolverService {
       return this.createErrorResult(
         fedAddress,
         normalized,
-        "not_found",
+        "network_error",
         error?.message || "Federation resolution failed",
         "negative_cache",
-        this.defaultNegativeTtlMs,
+        0,
       );
     }
   }

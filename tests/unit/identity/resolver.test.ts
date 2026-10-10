@@ -244,6 +244,27 @@ describe("BETA-026 (Issue #1933): Production Stealth-Address & Stellar-Federatio
       expect(result.freshness.source).toBe("stellar_federation");
       expect(customFederationResolver).toHaveBeenCalledWith("dan*stellar.org");
     });
+
+    it("does not cache transient federation failures", async () => {
+      const customFederationResolver = vi
+        .fn()
+        .mockRejectedValueOnce(new Error("temporary federation outage"))
+        .mockResolvedValueOnce({
+          account_id: "GD6WNOY2R572622UGLM2F2D72VFU7GY3QMR44QW277U7H353PP722GAC",
+        });
+
+      const first = await resolver.resolve("dan*stellar.org", {
+        customFederationResolver,
+      });
+      expect(first.error?.code).toBe("network_error");
+      expect(first.freshness.ttlMs).toBe(0);
+
+      const second = await resolver.resolve("dan*stellar.org", {
+        customFederationResolver,
+      });
+      expect(second.resolved).toBe(true);
+      expect(customFederationResolver).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("6. Bounded Positive & Negative Caching", () => {
@@ -338,6 +359,29 @@ describe("BETA-026 (Issue #1933): Production Stealth-Address & Stellar-Federatio
 
       expect(result.resolved).toBe(false);
       expect(result.error?.code).toBe("timeout");
+    });
+
+    it("retries after a timeout instead of serving a cached transient error", async () => {
+      const customFederationResolver = vi
+        .fn()
+        .mockImplementationOnce(() => new Promise((resolve) => setTimeout(resolve, 100)))
+        .mockResolvedValueOnce({
+          account_id: "GD6WNOY2R572622UGLM2F2D72VFU7GY3QMR44QW277U7H353PP722GAC",
+        });
+
+      const first = await resolver.resolve("slow*example.com", {
+        timeoutMs: 20,
+        customFederationResolver,
+      });
+      expect(first.error?.code).toBe("timeout");
+      expect(first.freshness.ttlMs).toBe(0);
+
+      const second = await resolver.resolve("slow*example.com", {
+        timeoutMs: 20,
+        customFederationResolver,
+      });
+      expect(second.resolved).toBe(true);
+      expect(customFederationResolver).toHaveBeenCalledTimes(2);
     });
   });
 
