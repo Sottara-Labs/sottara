@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Keypair } from "@stellar/stellar-sdk";
 import {
   PostageEscrowAdapter,
   classifyRetry,
@@ -178,6 +179,28 @@ describe("PostageEscrowAdapter", () => {
     const result = await adapter.checkAllowanceAndBalance("G" + "A".repeat(55), 1000n);
     expect(result.sufficient).toBe(true);
     expect(result.required).toBe("1000");
+    expect(result.status).toBe("ok");
+  });
+
+  it("reports an RPC read failure as unknown instead of insufficient", async () => {
+    const adapter = new PostageEscrowAdapter({
+      config: makeConfig({
+        contract: {
+          postageContractId: "CCOZFE6DFMEALCMD4GGBS2D4EPUJGYN62DRD72JMT43LVULWMJSYTRBN",
+        },
+      }),
+      managedWallet: {} as never,
+    });
+    vi.spyOn(adapter as any, "readEscrowConfig").mockResolvedValue({ asset: "CASSET" });
+    vi.spyOn(adapter as any, "makeRpcServer").mockReturnValue({
+      queryContract: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
+    });
+
+    const result = await adapter.checkAllowanceAndBalance(Keypair.random().publicKey(), 1000n);
+
+    expect(result.sufficient).toBe(false);
+    expect(result.status).toBe("unknown");
+    expect(result.lastError).toContain("Unable to read on-chain balance/allowance");
   });
 
   it("lifecycle entry points do not touch the chain when not live", async () => {

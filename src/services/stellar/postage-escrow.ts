@@ -45,6 +45,10 @@ export interface AllowanceCheckResult {
   allowance?: string;
   balance?: string;
   required: string;
+  /** Set when the chain read could not be completed. */
+  lastError?: string;
+  /** Distinguishes a confirmed shortfall from an indeterminate RPC read. */
+  status: "ok" | "insufficient" | "unknown";
 }
 
 const CONTRACT_ERROR_RE = /Error\(Contract, #(\d+)\)/;
@@ -263,13 +267,18 @@ export class PostageEscrowAdapter {
     const required = stellarAmount(amountStroops);
 
     if (!this.isLive()) {
-      return { sufficient: true, required };
+      return { sufficient: true, required, status: "ok" };
     }
 
     try {
       const cfg = await this.readEscrowConfig();
       if (!cfg || !cfg.asset) {
-        return { sufficient: false, required };
+        return {
+          sufficient: false,
+          required,
+          status: "unknown",
+          lastError: "Unable to read on-chain escrow configuration",
+        };
       }
 
       const server = this.makeRpcServer();
@@ -285,14 +294,33 @@ export class PostageEscrowAdapter {
         BigInt(balance) >= amountStroops &&
         BigInt(allowance) >= amountStroops;
 
+      if (balance === undefined || allowance === undefined) {
+        return {
+          sufficient: false,
+          balance,
+          allowance,
+          required,
+          status: "unknown",
+          lastError: "Unable to read on-chain balance/allowance",
+        };
+      }
+
       return {
         sufficient: ok,
         balance,
         allowance,
         required,
+        status: ok ? "ok" : "insufficient",
       };
     } catch (err: unknown) {
-      return { sufficient: false, required, lastError: redactError(err) } as any;
+      return {
+        sufficient: false,
+        allowance: "0",
+        balance: "0",
+        required,
+        lastError: redactError(err),
+        status: "unknown",
+      };
     }
   }
 
