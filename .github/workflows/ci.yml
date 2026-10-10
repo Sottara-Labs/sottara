@@ -571,7 +571,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Start dev server
-        run: bun run dev &
+        run: |
+          setsid bun run dev &
+          echo $! > /tmp/sottara-beta-performance.pid
         env:
           STEALTH_AUTH_ALLOW_HEADER_ONLY: "1"
 
@@ -587,6 +589,13 @@ jobs:
           LOAD_BUDGET_MAX_P90_MS: "1200"
           LOAD_BUDGET_MAX_P99_MS: "2500"
           LOAD_BUDGET_MIN_RATE_LIMIT_HITS: "1"
+
+      - name: Stop dev server
+        if: always()
+        run: |
+          if [ -f /tmp/sottara-beta-performance.pid ]; then
+            kill -- -"$(cat /tmp/sottara-beta-performance.pid)" 2>/dev/null || true
+          fi
 
       - name: Write gate result (pass)
         if: success()
