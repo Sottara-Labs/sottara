@@ -25,6 +25,11 @@ env:
   BUN_VERSION: "1.3.14"
   NODE_VERSION: "24"
 
+# Serialize all operator-triggered runs that share the testnet environment.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   beta-soroban-live:
     name: Soroban Live Integration Gate
