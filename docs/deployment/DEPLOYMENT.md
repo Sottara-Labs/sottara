@@ -9,9 +9,10 @@ This document outlines the step-by-step process for deploying the Hush Soroban c
    cargo install --locked stellar-cli --features opt
    ```
 2. **Node/Bun**: Ensure you have Node.js or Bun installed to run the deployment scripts.
-3. **Rust/Wasm Target**: Ensure your rust toolchain can compile to Wasm.
+3. **Rust/Wasm Target**: Install the target pinned by `rust-toolchain.toml`; this is the
+   same target used by the contract build in CI.
    ```bash
-   rustup target add wasm32-unknown-unknown
+   rustup target add wasm32v1-none
    ```
 4. **Deployer Account**: You must have a funded Stellar account. For Testnet, you can fund a new account using the Friendbot. Keep the secret key handy.
 
