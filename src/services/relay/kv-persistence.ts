@@ -61,6 +61,16 @@ export class KvRelayPersistence implements RelayPersistence {
     const key = list.keys[0]?.name;
     if (!key) return null;
     const envelope = await this.kv.get<RelayEnvelope>(key, "json");
+    // KV has no atomic pop. Listing one key, then reading and deleting it is
+    // intentionally best-effort; a concurrent worker may race for the same key.
+    const list = await (this.kv as any).list({
+      prefix: KvRelayPersistence.MESSAGE_PREFIX,
+      limit: 1,
+    });
+    const key = list.keys?.[0]?.name;
+    if (!key) return null;
+
+    const envelope = (await this.kv.get(key, "json")) as RelayEnvelope | null;
     if (!envelope) return null;
     await this.kv.delete(key);
     await this.decrementCounter(KvRelayPersistence.QUEUE_DEPTH_KEY);
@@ -146,6 +156,11 @@ export class KvRelayPersistence implements RelayPersistence {
     const next = value + 1;
     await this.kv.put(key, String(next));
     return next;
+  }
+
+  private async decrementCounter(key: string): Promise<void> {
+    const value = await this.readCounter(key);
+    await this.kv.put(key, String(Math.max(0, value - 1)));
   }
 
   private async decrementCounter(key: string): Promise<void> {

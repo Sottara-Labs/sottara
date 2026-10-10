@@ -63,6 +63,16 @@ class MockDurableObjectNamespace {
 
   get() {
     return this.coordinator;
+  async delete(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async list(options: { prefix: string; limit?: number }) {
+    const keys = [...this.store.keys()]
+      .filter((key) => key.startsWith(options.prefix))
+      .slice(0, options.limit ?? 1000)
+      .map((name) => ({ name }));
+    return { keys, list_complete: true };
   }
 }
 
@@ -296,5 +306,22 @@ describe("KvRelayPersistence.listRecipientQueue pagination", () => {
 
     await expect(persistence.listRecipientQueue(target.recipient)).resolves.toEqual([target]);
     expect(kv.getCalls).toEqual([key, missingKey]);
+  it("dequeues messages and restores queue depth", async () => {
+    const kv = new MockKVNamespace();
+    const persistence = new KvRelayPersistence(kv as unknown as KVNamespace);
+    const first = envelope({ messageId: "1".padStart(64, "0") });
+    const second = envelope({ messageId: "2".padStart(64, "0") });
+
+    await persistence.enqueue(first);
+    await persistence.enqueue(second);
+    expect(await persistence.getQueueDepth()).toBe(2);
+
+    await expect(persistence.dequeue()).resolves.toEqual(first);
+    expect(await persistence.get(first.messageId)).toBeNull();
+    expect(await persistence.getQueueDepth()).toBe(1);
+
+    await expect(persistence.dequeue()).resolves.toEqual(second);
+    await expect(persistence.dequeue()).resolves.toBeNull();
+    expect(await persistence.getQueueDepth()).toBe(0);
   });
 });
