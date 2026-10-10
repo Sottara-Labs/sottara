@@ -132,6 +132,57 @@ describe("client decoding matches OpenAPI schemas", () => {
     });
   });
 
+  it.each([401, 403])(
+    "invokes onUnauthorized once for a %s response while preserving the error",
+    async (status) => {
+      const onUnauthorized = vi.fn();
+      vi.stubGlobal(
+        "fetch",
+        mockFetch({
+          ok: false,
+          status,
+          json: {
+            error: {
+              code: status === 401 ? "unauthorized" : "forbidden",
+              message: "Access denied",
+              retryable: false,
+              retryClassification: "none",
+            },
+            meta: { requestId: "r-auth", timestamp: "2026-01-01T00:00:00.000Z" },
+          },
+        }),
+      );
+
+      const client = new ApiClient({ onUnauthorized });
+      await expect(client.get<Contact>("/contacts")).rejects.toMatchObject({ status });
+      expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("does not invoke onUnauthorized for other failures", async () => {
+    const onUnauthorized = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      mockFetch({
+        ok: false,
+        status: 500,
+        json: {
+          error: {
+            code: "internal_error",
+            message: "Unexpected failure",
+            retryable: false,
+            retryClassification: "none",
+          },
+          meta: { requestId: "r-500", timestamp: "2026-01-01T00:00:00.000Z" },
+        },
+      }),
+    );
+
+    const client = new ApiClient({ onUnauthorized });
+    await expect(client.get<Contact>("/contacts")).rejects.toMatchObject({ status: 500 });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it("parseErrorEnvelope is stable for server-shaped error bodies", () => {
     const error = parseErrorEnvelope(
       {
