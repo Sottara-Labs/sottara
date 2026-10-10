@@ -583,7 +583,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     needs:
     - client-checks
     steps:
@@ -634,6 +634,13 @@ jobs:
         path: gate-result-e2e.json
         retention-days: 7
         if-no-files-found: ignore
+    - name: Install Playwright browsers
+      timeout-minutes: 5
+      run: ./node_modules/.bin/playwright install chromium --with-deps
+    - name: Run E2E tests
+      run: bun run test:e2e
+      env:
+        CI: true
   visual-e2e:
     name: Visual & Cross-Browser E2E
     runs-on: ubuntu-latest
