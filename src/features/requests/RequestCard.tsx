@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { BadgeCheck, Check, Eye, RefreshCw, RotateCcw, ShieldAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Email } from "@/components/mail/data";
+import { buildLocalIdenticonDataUri } from "@/components/mail/SenderAvatar";
 import { motionPresets } from "@/lib/motion-presets";
 import type { CardStatus, TriageAction } from "./types";
 
@@ -127,9 +128,7 @@ export function RequestCard({
                 )}
                 <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full ring-1 ring-surface-tint/10">
                   <img
-                    src={`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(
-                      email.from,
-                    )}&backgroundColor=1a1a1d`}
+                    src={buildLocalIdenticonDataUri(email.email || email.from, email.avatarColor)}
                     alt={email.from}
                     className="h-full w-full object-cover"
                   />
