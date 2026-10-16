@@ -193,7 +193,7 @@ describe("PostageEscrowAdapter", () => {
     });
     vi.spyOn(adapter as any, "readEscrowConfig").mockResolvedValue({ asset: "CASSET" });
     vi.spyOn(adapter as any, "makeRpcServer").mockReturnValue({
-      queryContract: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
+      getContractData: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
     });
 
     const result = await adapter.checkAllowanceAndBalance(Keypair.random().publicKey(), 1000n);
@@ -201,6 +201,26 @@ describe("PostageEscrowAdapter", () => {
     expect(result.sufficient).toBe(false);
     expect(result.status).toBe("unknown");
     expect(result.lastError).toContain("Unable to read on-chain balance/allowance");
+  });
+
+  it("blocks the operation when the balance cannot be read", async () => {
+    const adapter = new PostageEscrowAdapter({
+      config: makeConfig({
+        contract: {
+          postageContractId: "CCOZFE6DFMEALCMD4GGBS2D4EPUJGYN62DRD72JMT43LVULWMJSYTRBN",
+        },
+      }),
+      managedWallet: {} as never,
+    });
+    vi.spyOn(adapter as any, "readEscrowConfig").mockResolvedValue({ asset: "CASSET" });
+    vi.spyOn(adapter as any, "makeRpcServer").mockReturnValue({
+      getContractData: vi.fn().mockRejectedValue(new Error("RPC unavailable")),
+    });
+
+    const result = await adapter.checkAllowanceAndBalance(Keypair.random().publicKey(), 1000n);
+
+    expect(result.sufficient).toBe(false);
+    expect(result.status).not.toBe("ok");
   });
 
   it("lifecycle entry points do not touch the chain when not live", async () => {

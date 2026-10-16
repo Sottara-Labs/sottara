@@ -1,4 +1,4 @@
-import { rpc, TransactionBuilder, Networks, Address } from "@stellar/stellar-sdk";
+import { rpc, TransactionBuilder, Networks, Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { createHash } from "node:crypto";
 import type { BetaRuntimeConfig } from "../../config/schema";
 import type { Postage, PostageChainStatus, PostageStatus } from "../../server/api/domain";
@@ -330,10 +330,26 @@ export class PostageEscrowAdapter {
     addr: Address,
   ): Promise<string | undefined> {
     try {
-      const { result } = await (server as any).queryContract(assetContractId, "balance", {
-        id: addr.toString(),
-      });
-      return result !== undefined && result !== null ? result.toString() : undefined;
+      const contract = new Contract(assetContractId);
+      const op = contract.call("balance", addr.toScVal());
+      const tx = new TransactionBuilder(
+        await server.getAccount(addr.toString()),
+        {
+          fee: "100",
+          networkPassphrase: this.networkPassphrase,
+        },
+      )
+        .addOperation(op)
+        .setTimeout(30)
+        .build();
+      const sim = await server.simulateTransaction(tx);
+      if (rpc.Api.isSimulationError(sim)) {
+        return undefined;
+      }
+      const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+      if (!retval) return undefined;
+      const native = scValToNative(retval);
+      return native !== undefined && native !== null ? native.toString() : undefined;
     } catch {
       return undefined;
     }
@@ -346,11 +362,26 @@ export class PostageEscrowAdapter {
     spender: Address,
   ): Promise<string | undefined> {
     try {
-      const { result } = await (server as any).queryContract(assetContractId, "allowance", {
-        from: from.toString(),
-        spender: spender.toString(),
-      });
-      return result !== undefined && result !== null ? result.toString() : undefined;
+      const contract = new Contract(assetContractId);
+      const op = contract.call("allowance", from.toScVal(), spender.toScVal());
+      const tx = new TransactionBuilder(
+        await server.getAccount(from.toString()),
+        {
+          fee: "100",
+          networkPassphrase: this.networkPassphrase,
+        },
+      )
+        .addOperation(op)
+        .setTimeout(30)
+        .build();
+      const sim = await server.simulateTransaction(tx);
+      if (rpc.Api.isSimulationError(sim)) {
+        return undefined;
+      }
+      const retval = (sim as rpc.Api.SimulateTransactionSuccessResponse).result?.retval;
+      if (!retval) return undefined;
+      const native = scValToNative(retval);
+      return native !== undefined && native !== null ? native.toString() : undefined;
     } catch {
       return undefined;
     }
