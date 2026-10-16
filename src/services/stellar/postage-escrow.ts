@@ -1,4 +1,4 @@
-import { rpc, TransactionBuilder, Networks, Address } from "@stellar/stellar-sdk";
+import { rpc, TransactionBuilder, Networks, Address, xdr, scValToNative } from "@stellar/stellar-sdk";
 import { createHash } from "node:crypto";
 import type { BetaRuntimeConfig } from "../../config/schema";
 import type { Postage, PostageChainStatus, PostageStatus } from "../../server/api/domain";
@@ -134,6 +134,36 @@ function messageIdToBuffer(messageIdHex: string): Buffer {
 
 function stellarAmount(big: bigint): string {
   return big.toString();
+}
+
+/**
+ * Discriminated result of an untyped SAC read (balance or allowance).
+ *
+ * `undefined` is not a state: a read either yields a numeric value, is
+ * explicitly absent (the contract returned no value), or failed to decode.
+ */
+export type SacReadResult =
+  | { kind: "value"; value: bigint }
+  | { kind: "absent" }
+  | { kind: "unreadable"; error: string };
+
+function decodeSacValue(result: unknown): SacReadResult {
+  if (result === undefined || result === null) return { kind: "absent" };
+  try {
+    if (result instanceof xdr.ScVal) {
+      const native = scValToNative(result);
+      if (typeof native === "bigint") return { kind: "value", value: native };
+      if (typeof native === "number") return { kind: "value", value: BigInt(native) };
+      if (typeof native === "string") return { kind: "value", value: BigInt(native) };
+      return { kind: "unreadable", error: `unsupported ScVal native type: ${typeof native}` };
+    }
+    if (typeof result === "bigint") return { kind: "value", value: result };
+    if (typeof result === "number") return { kind: "value", value: BigInt(result) };
+    if (typeof result === "string") return { kind: "value", value: BigInt(result) };
+    return { kind: "unreadable", error: `unsupported result type: ${typeof result}` };
+  } catch (err: unknown) {
+    return { kind: "unreadable", error: redactError(err) };
+  }
 }
 
 export class PostageEscrowUnavailableError extends Error {
@@ -285,25 +315,42 @@ export class PostageEscrowAdapter {
       const postageAddr = new Address(this.postageContractId);
       const senderAddr = new Address(sender);
 
-      const balance = await this.readSACBalance(server, cfg.asset, senderAddr);
-      const allowance = await this.readSACAllowance(server, cfg.asset, senderAddr, postageAddr);
+      const balanceRead = await this.readSACBalance(server, cfg.asset, senderAddr);
+      const allowanceRead = await this.readSACAllowance(server, cfg.asset, senderAddr, postageAddr);
 
-      const ok =
-        balance !== undefined &&
-        allowance !== undefined &&
-        BigInt(balance) >= amountStroops &&
-        BigInt(allowance) >= amountStroops;
+      const balance = balanceRead.kind === "value" ? balanceRead.value.toString() : undefined;
+      const allowance = allowanceRead.kind === "value" ? allowanceRead.value.toString() : undefined;
 
-      if (balance === undefined || allowance === undefined) {
+      if (balanceRead.kind === "unreadable" || allowanceRead.kind === "unreadable") {
+        const readError =
+          balanceRead.kind === "unreadable"
+            ? balanceRead.error
+            : allowanceRead.kind === "unreadable"
+              ? allowanceRead.error
+              : "unknown read failure";
         return {
           sufficient: false,
           balance,
           allowance,
           required,
           status: "unknown",
-          lastError: "Unable to read on-chain balance/allowance",
+          lastError: redactError(`Unable to read on-chain balance/allowance: ${readError}`),
         };
       }
+
+      if (balanceRead.kind === "absent" || allowanceRead.kind === "absent") {
+        return {
+          sufficient: false,
+          balance,
+          allowance,
+          required,
+          status: "unknown",
+          lastError: "On-chain balance/allowance read returned no value",
+        };
+      }
+
+      const ok =
+        balanceRead.value >= amountStroops && allowanceRead.value >= amountStroops;
 
       return {
         sufficient: ok,
@@ -315,8 +362,8 @@ export class PostageEscrowAdapter {
     } catch (err: unknown) {
       return {
         sufficient: false,
-        allowance: "0",
-        balance: "0",
+        allowance: undefined,
+        balance: undefined,
         required,
         lastError: redactError(err),
         status: "unknown",
@@ -328,14 +375,14 @@ export class PostageEscrowAdapter {
     server: rpc.Server,
     assetContractId: string,
     addr: Address,
-  ): Promise<string | undefined> {
+  ): Promise<SacReadResult> {
     try {
       const { result } = await (server as any).queryContract(assetContractId, "balance", {
         id: addr.toString(),
       });
-      return result !== undefined && result !== null ? result.toString() : undefined;
-    } catch {
-      return undefined;
+      return decodeSacValue(result);
+    } catch (err: unknown) {
+      return { kind: "unreadable", error: redactError(err) };
     }
   }
 
@@ -344,15 +391,15 @@ export class PostageEscrowAdapter {
     assetContractId: string,
     from: Address,
     spender: Address,
-  ): Promise<string | undefined> {
+  ): Promise<SacReadResult> {
     try {
       const { result } = await (server as any).queryContract(assetContractId, "allowance", {
         from: from.toString(),
         spender: spender.toString(),
       });
-      return result !== undefined && result !== null ? result.toString() : undefined;
-    } catch {
-      return undefined;
+      return decodeSacValue(result);
+    } catch (err: unknown) {
+      return { kind: "unreadable", error: redactError(err) };
     }
   }
 
