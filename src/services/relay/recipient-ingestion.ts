@@ -12,6 +12,7 @@ import type { StoredEnvelope } from "@/server/api/domain";
 import type { ApiRepository } from "@/server/api/repository";
 import type { KeyProvider } from "@/services/crypto/open-envelope";
 import { processInboundEnvelope } from "@/features/mail/recipient-pipeline";
+import { bytesFromBase64 } from "@/services/relay/codec";
 import type { RelayEnvelope, RelayPersistence } from "./persistence";
 
 export interface RecipientIngestionOptions {
@@ -91,11 +92,15 @@ export class RecipientIngestionService {
 
       // 2. Validate envelope through cryptographic inbound pipeline if keys provided
       if (this.keys) {
-        let payloadParsed: unknown = envelope.payload;
+        // The wire format is base64-encoded JSON. Decode before parsing.
+        let payloadParsed: unknown;
         try {
-          payloadParsed = JSON.parse(envelope.payload);
+          const decoded = bytesFromBase64(envelope.payload);
+          const text = new TextDecoder().decode(decoded);
+          payloadParsed = JSON.parse(text);
         } catch {
-          // If not JSON, pass as-is
+          // If not valid base64/JSON, pass as-is so the pipeline can quarantine it.
+          payloadParsed = envelope.payload;
         }
 
         const processResult = await processInboundEnvelope({

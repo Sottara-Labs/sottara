@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
+import { bytesToBase64 } from "@noble/curves/abstract/utils";
 
 import { MemoryApiRepository } from "@/server/api/memory-repository";
 import { MemoryRelayPersistence } from "@/services/relay/memory-persistence";
@@ -15,13 +16,17 @@ const MSG1 = "1".repeat(64);
 const MSG2 = "2".repeat(64);
 const MSG3 = "3".repeat(64);
 
+function encodePayload(value: unknown): string {
+  return bytesToBase64(new TextEncoder().encode(JSON.stringify(value)));
+}
+
 function makeRelayEnvelope(overrides: Partial<RelayEnvelope>): RelayEnvelope {
   return {
     messageId: MSG1,
     sender: BOB,
     recipient: ALICE,
     recipientDomain: "stealth.test",
-    payload: JSON.stringify({
+    payload: encodePayload({
       version: "v1",
       sender: BOB,
       recipient: ALICE,
@@ -97,7 +102,7 @@ describe("Recipient Queue Ingestion Service (BETA-034)", () => {
 
     const malformedEnvelope = makeRelayEnvelope({
       messageId: MSG2,
-      payload: "corrupted-unparseable-bytes",
+      payload: bytesToBase64(new TextEncoder().encode("corrupted-unparseable-bytes")),
     });
     await persistence.enqueue(malformedEnvelope);
 
