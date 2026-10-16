@@ -30,6 +30,45 @@ import { assertRustPin } from "./verify-rust-version.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const read = (p) => readFileSync(resolve(ROOT, p), "utf8");
 
+/**
+ * Extract an env value from a workflow YAML document without a YAML dependency.
+ *
+ * The value may be double-quoted, single-quoted, or a bare scalar (e.g.
+ * `BUN_VERSION: 1.3.14`). We only look at the top-level `env`: block and
+ * match the key at any indentation within it, which is how the CI workflow
+ * declares its pins.
+ */
+function readEnvValue(yaml, key) {
+  const lines = yaml.split(/\r_\n/);
+  let indent = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (indent === null) {
+      if (/^env:\s*(#.*)?$/.test(line)) {
+        indent = 0;
+      }
+      continue;
+    }
+    // Leave the env: block once we hit a non-indented line.
+    if (line.trim() !== "" && !/^[\s]/.test(line)) {
+      break;
+    }
+    const m = line.match(new RegExp(`^\\s+${key}\\s*:\\s*(.*?)%s[$#]?$`));
+    if (!m) {
+      continue;
+    }
+    let value = m[1].trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    return value;
+  }
+  return null;
+}
+
 const problems = [];
 const ok = [];
 
@@ -53,12 +92,12 @@ for (const [envKey, tvKey] of [
   ["OPTIC_VERSION", "optic"],
   ["WRANGLER_VERSION", "wrangler"],
 ]) {
-  const m = ciYml.match(new RegExp(`^\\s*${envKey}:\\s*"([^"]+)"`, "m"));
-  if (!m) {
+  const value = readEnvValue(ciYml, envKey);
+  if (value === null) {
     problems.push(`- ci.yml is missing env ${envKey}`);
     continue;
   }
-  expect(`ci.yml ${envKey} == tool-versions.${tvKey}`, m[1], toolVersions[tvKey]);
+  expect(`ci.yml ${envKey} == tool-versions.${tvKey}`, value, toolVersions[tvKey]);
 }
 
 const nodeVersionFile = read(".node-version").trim();
