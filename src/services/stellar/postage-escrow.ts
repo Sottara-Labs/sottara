@@ -216,9 +216,31 @@ export class PostageEscrowAdapter {
     return createPostageClient(opts);
   }
 
+  /**
+   * Transport security is a property of the URL, not of the chain.
+   * `allowHttp` is derived from the parsed RPC URL protocol, and an
+   * insecure `http://` endpoint is only permitted when the operator has
+   * explicitly opted in via `network.allowInsecureRpc`.
+   */
   private makeRpcServer(): rpc.Server {
+    let protocol: string;
+    try {
+      protocol = new URL(this.rpcUrl).protocol;
+    } catch {
+      throw new PostageEscrowUnavailableError(`invalid RPC URL: ${redactError(this.rpcUrl)}`);
+    }
+
+    if (protocol === "http:") {
+      if (!this.config.network.allowInsecureRpc) {
+        throw new PostageEscrowUnavailableError(
+          "insecure http:// RPC endpoint refused; set network.allowInsecureRpc to opt in",
+        );
+      }
+      return new rpc.Server(this.rpcUrl, { allowHttp: true });
+    }
+
     return new rpc.Server(this.rpcUrl, {
-      allowHttp: this.networkPassphrase !== Networks.PUBLIC,
+      allowHttp: false,
     });
   }
 
