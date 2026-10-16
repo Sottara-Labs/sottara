@@ -33,23 +33,7 @@ jobs:
       timeout-minutes: 20
       env:
         GH_TOKEN: ${{ github.token }}
-      run: "# CI and staging are both triggered by the same push, so CI may still\n\
-        # be running when this job starts. Wait for that exact commit's CI run.\n\
-        for attempt in {1..80}; do\n  CI_RUN=$(gh api \\\n    \"repos/${{ github.repository\
-        \ }}/actions/runs?head_sha=${{ github.sha }}&event=push&per_page=20\" \\\n\
-        \    --jq '[.workflow_runs[] | select(.name == \"CI\")] | sort_by(.created_at)\
-        \ | reverse | .[0] // empty' \\\n    2>/dev/null || true)\n\n  if [ -n \"\
-        $CI_RUN\" ]; then\n    CI_RUN_ID=$(printf '%s' \"$CI_RUN\" | jq -r '.id')\n\
-        \    CI_STATUS=$(printf '%s' \"$CI_RUN\" | jq -r '.status')\n    CI_CONCLUSION=$(printf\
-        \ '%s' \"$CI_RUN\" | jq -r '.conclusion // empty')\n\n    echo \"CI run $CI_RUN_ID\
-        \ is $CI_STATUS${CI_CONCLUSION:+ ($CI_CONCLUSION)}\"\n\n    if [ \"$CI_STATUS\"\
-        \ = \"completed\" ]; then\n      if [ \"$CI_CONCLUSION\" != \"success\" ];\
-        \ then\n        echo \"::error::CI run $CI_RUN_ID completed with conclusion:\
-        \ $CI_CONCLUSION\"\n        exit 1\n      fi\n\n      echo \"ci_run_id=$CI_RUN_ID\"\
-        \ >> \"$GITHUB_OUTPUT\"\n      echo \"✓ Found successful CI run: $CI_RUN_ID\"\
-        \n      exit 0\n    fi\n  else\n    echo \"Waiting for CI run to appear for\
-        \ commit ${{ github.sha }}...\"\n  fi\n\n  sleep 15\ndone\n\necho \"::error::Timed\
-        \ out waiting for successful CI for commit ${{ github.sha }}\"\nexit 1\n"
+      run: "# CI and staging are both triggered by the same push, so CI may still\n\"        \n        # be running when this job starts. Wait for that exact commit's CI run.\n\"        \n        # If the run was cancelled because a newer push superseded it, that is not a\n\"        \n        # failure of this commit's changes — wait for the newest run for the branch\n\"        \n        # instead, so two quick pushes both reach a terminal CI conclusion.\n\"        \nfor attempt in {1..80}; do\n  CI_RUN=$(gh api \\\n    \"repos/${{ github.repository }}/actions/runs?head_sha=${{ github.sha }}&event=push&per_page=20\" \\\n    --jq '[.workflow_runs[] | select(.name == \"CI\")] | sort_by(.created_at) | reverse | .[0] // empty' \\\n    2>/dev/null || true)\n\n  if [ -n \"$CI_RUN\" ]; then\n    CI_RUN_ID=$(printf '%s' \"$CI_RUN\" | jq -r '.id')\n    CI_STATUS=$(printf '%s' \"$CI_RUN\" | jq -r '.status')\n    CI_CONCLUSION=$(printf '%s' \"$CI_RUN\" | jq -r '.conclusion // empty')\n\n    echo \"CI run $CI_RUN_ID is $CI_STATUS${CI_CONCLUSION:+| ($CI_CONCLUSION)}\"\n\n    if [ \"$CI_STATUS\" = \"completed\" ]; then\n      if [ \"$CI_CONCLUSION\" = \"cancelled\" ]; then\n        echo \"CI run $CI_RUN_ID was cancelled (superseded by a newer push). Waiting for the newest run for this branch...\"\n        CI_RUN=$(gh api \\\n          \"repos/${{ github.repository }}/actions/runs?branch=main&event=push&per_page=20\" \\\n          --jq '[.workflow_runs[] | select(.name == \"CI\")] | sort_by(.created_at) | reverse | .[0] // empty' \\\n          2>/dev/null || true)\n        if [ -n \"$CI_RUN\" ]; then\n          CI_RUN_ID=$(printf '%s' \"$CI_RUN\" | jq -r '.id')\n          CI_STATUS=$(printf '%s' \"$CI_RUN\" | jq -r '.status')\n          CI_CONCLUSION=$(printf '%s' \"$CI_RUN\" | jq -r '.conclusion // empty')\n          echo \"Newest CI run $CI_RUN_ID is $CI_STATUS${CI_CONCLUSION+: ($CI_CONCLUSION)}\"\n          if [ \"$CI_STATUS\" = \"completed\" ] && [ \"$CI_CONCLUSION\" = \"success\" ]; then\n            echo \"ci_run_id=$CI_RUN_ID\" >> \"$GITHUB_OUTPUT\"\n            echo \"✓ Found successful CI run: $CI_RUN_ID\"\n            exit 0\n          fi\n        fi\n      else\n        if [ \"$CI_CONCLUSION\" != \"success\" ]; then\n          echo \"::error::CI run $CI_RUN_ID completed with conclusion: $CI_CONCLUSION\"\n          exit 1\n        fi\n\n        echo \"ci_run_id=$CI_RUN_ID\" >> \"$GITHUB_OUTPUT\"\n        echo \"✓ Found successful CI run: $CI_RUN_ID\"\n        exit 0\n      fi\n    fi\n  else\n    echo \"Waiting for CI run to appear for commit ${{ github.sha }}...\"\n  fi\n\n  sleep 15\ndone\n\necho \"::error::Timed out waiting for successful CI for commit ${{ github.sha }}\"\nexit 1\n"
     - name: Download CI gate results from CI run
       if: steps.ci-run.outputs.ci_run_id != ''
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
@@ -60,7 +44,7 @@ jobs:
         repository: ${{ github.repository }}
         github-token: ${{ github.token }}
       continue-on-error: true
-    - name: Download individual gate results from CI run
+    - name: Download individual gate results from CIR run
       if: steps.ci-run.outputs.ci_run_id != ''
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
       with:
@@ -73,25 +57,7 @@ jobs:
       continue-on-error: true
     - name: Check release gate status
       id: check
-      run: "# Check if CI gates passed for this commit\n# Look for the release gate\
-        \ summary or individual gate results\nGATE_SUMMARY_EXISTS=false\nif [ -f \"\
-        gate-artifacts/release-gate-summary.json\" ]; then\n  GATE_SUMMARY_EXISTS=true\n\
-        \  VERDICT=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).verdict)\"\
-        )\n  RELEASABLE=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).releasable)\"\
-        )\n  echo \"Release gate verdict: $VERDICT\"\n  echo \"Releasable: $RELEASABLE\"\
-        \n  \n  if [ \"$RELEASABLE\" = \"true\" ]; then\n    echo \"releasable=true\"\
-        \ >> $GITHUB_OUTPUT\n  else\n    echo \"releasable=false\" >> $GITHUB_OUTPUT\n\
-        \  fi\nelse\n  echo \"No release gate summary found — checking individual\
-        \ gates\"\n  \n  # Check for critical gate results\n  CRITICAL_GATES=(\"client-checks\"\
-        \ \"contract-checks\" \"beta-migrations\" \"beta-backup\" \"e2e\" \"provenance\"\
-        )\n  ALL_PASS=true\n  \n  for gate in \"${CRITICAL_GATES[@]}\"; do\n    GATE_FILE=\"\
-        gate-artifacts/gate-result-${gate}.json\"\n    if [ -f \"$GATE_FILE\" ]; then\n\
-        \      STATUS=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('$GATE_FILE','utf8')).status)\"\
-        )\n      echo \"Gate $gate: $STATUS\"\n      if [ \"$STATUS\" != \"pass\"\
-        \ ]; then\n        ALL_PASS=false\n      fi\n    else\n      echo \"Gate $gate:\
-        \ MISSING\"\n      ALL_PASS=false\n    fi\n  done\n  \n  if [ \"$ALL_PASS\"\
-        \ = \"true\" ]; then\n    echo \"releasable=true\" >> $GITHUB_OUTPUT\n  else\n\
-        \    echo \"releasable=false\" >> $GITHUB_OUTPUT\n  fi\nfi\n"
+      run: "# Check if CI gates passed for this commit\n# Look for the release gate summary or individual gate results\nGATE_SUMMARY_EXISTS=false\nif [ -f \"gate-artifacts/release-gate-summary.json\" ]; then\n  GATE_SUMMARY_EXISTS=true\n  VERDICT=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).verdict)\")\n  RELEASABLE=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).releasable)\")\n  echo \"Release gate verdict: $VERDICT\"\n  echo \"Releasable: $RELEASABLE\"\n  \n  if [ \"$RELEASABLE\" = \"true\" ]; then\n    echo \"releasable=true\" >> $GITHUB_OUTPUT\n  else\n    echo \"releasable=false\" >> $GITHUB_OUTPUT\n  fi\nelse\n  echo \"No release gate summary found — checking individual gates\"\n  \n  # Check for critical gate results\n  CRITICAL_GATES=(\"client-checks\" \"contract-checks\" \"beta-migrations\" \"beta-backup\" \"e2e\" \"provenance\")\n  ALL_PASS=true\n  \n  for gate in \"${CRITICAL_GATES[@]}\"; do\n    GATE_FILE=\"gate-artifacts/gate-result-${gate}.json\"\n    if [ -f \"$GATE_FILE\" ]; then\n      STATUS=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('$GATE_FILE','utf8')).status)\")\n      echo \"Gate $gate: $STATUS\"\n      if [ \"$STATUS\" != \"pass\" ]; then\n        ALL_PASS=false\n      fi\n    else\n      echo \"Gate $gate: MISSING\"\n      ALL_PASS=false\n    fi\n  done\n  \n  if [ \"$ALL_PASS\" = \"true\" ]; then\n    echo \"releasable=true\" >> $GITHUB_OUTPUT\n  else\n    echo \"releasable=false\" >> $GITHUB_OUTPUT\n  fi\nfi\n"
   staging-deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
@@ -119,12 +85,7 @@ jobs:
         STEALTH_SMTP_PASSWORD: ${{ secrets.STEALTH_SMTP_PASSWORD }}
         STEALTH_RPC_API_KEY: ${{ secrets.STEALTH_RPC_API_KEY }}
         STEALTH_OPERATOR_SECRET: ${{ secrets.STEALTH_OPERATOR_SECRET }}
-      run: "# Verify required secrets are available for staging\nREQUIRED_SECRETS=(\n\
-        \  \"STEALTH_CURSOR_SECRET\"\n  \"STEALTH_RELAY_API_KEY\"\n  \"STEALTH_STORAGE_SECRET\"\
-        \n  \"STEALTH_SMTP_PASSWORD\"\n  \"STEALTH_RPC_API_KEY\"\n  \"STEALTH_OPERATOR_SECRET\"\
-        \n)\n\nfor secret in \"${REQUIRED_SECRETS[@]}\"; do\n  if [ -z \"${!secret}\"\
-        \ ]; then\n    echo \"ERROR: Required secret $secret is not set\"\n    exit\
-        \ 1\n  fi\ndone\n\necho \"✓ All required secrets are available\"\n"
+      run: "# Verify required secrets are available for staging\nREQUIRED_SECRETS=(\n  \"STEALTH_CURSOR_SECRET\"\n  \"STEALTH_RELAY_API_KEY\"\n  \"STEALTH_STORAGE_SECRET\"\n  \"STEALTH_SMTP_PASSWORD\"\n  \"STEALTH_RPC_API_KEY\"\n  \"STEALTH_OPERATOR_SECRET\"\n)\n\nfor secret in \"${REQUIRED_SECRETS[@]}\"; do\n  if [ -z \"${!secret}\" ]; then\n    echo \"ERROR: Required secret $secret is not set\"\n    exit 1\n  fi\ndone\n\necho \"✓ All required secrets are available\"\n"
     - name: Run migrations
       timeout-minutes: 20
       run: 'echo "Running database migrations..."
@@ -146,29 +107,14 @@ jobs:
         '
     - name: Compute artifact hash
       id: artifact-hash
-      run: "if [ -d \"dist\" ]; then\n  HASH=$(find dist -type f -exec sha256sum {}\
-        \ + | sort | sha256sum | cut -d' ' -f1)\n  echo \"artifact_hash=$HASH\" >>\
-        \ $GITHUB_OUTPUT\n  echo \"✓ Artifact hash: $HASH\"\nelse\n  echo \"artifact_hash=unknown\"\
-        \ >> $GITHUB_OUTPUT\nfi\n"
+      run: "if [ -d \"dist\" ]; then\n  HASH=$(find dist -type f -exec sha256sum {} \\+ | sort | sha256sum | cut -d' ' -f1)\n  echo \"artifact_hash=$HASH\" >> $GITHUB_OUTPUT\n  echo \"✓ Artifact hash: $HASH\"\nelse\n  echo \"artifact_hash=unknown\" >> $GITHUB_OUTPUT\nfi\n"
     - name: Deploy to Cloudflare Workers (staging)
-      run: "# The Cloudflare Vite plugin compiles src/server.ts → dist/server/\n#\
-        \ Deploy using the compiled worker output with a staging-specific name\nnpx\
-        \ wrangler@4.105.0 deploy \\\n  --config dist/server/wrangler.json \\\n  --name\
-        \ stealth-mail-staging\n"
+      run: "# The Cloudflare Vite plugin compiles src/server.ts → dist/server/\n# Deploy using the compiled worker output with a staging-specific name\nnpx wrangler@4.105.0 deploy \\\n  --config dist/server/wrangler.json \\\n  --name stealth-mail-staging\n"
       env:
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     - name: Run smoke tests
-      run: "echo \"Running smoke tests...\"\n\n# Health check\nSTAGING_URL=\"https://stealth-mail-staging.${{\
-        \ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev\"\nHTTP_STATUS=$(curl -s -o /dev/null\
-        \ -w \"%{http_code}\" \"$STAGING_URL/health\" || echo \"000\")\n\nif [ \"\
-        $HTTP_STATUS\" != \"200\" ]; then\n  echo \"Health check failed with status:\
-        \ $HTTP_STATUS\"\n  exit 1\nfi\n\necho \"✓ Health check passed (HTTP $HTTP_STATUS)\"\
-        \n\n# API contract check\nOPENAPI_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\"\
-        \ \"$STAGING_URL/openapi.json\" || echo \"000\")\nif [ \"$OPENAPI_STATUS\"\
-        \ != \"200\" ]; then\n  echo \"OpenAPI check failed with status: $OPENAPI_STATUS\"\
-        \n  exit 1\nfi\n\necho \"✓ API contract check passed (HTTP $OPENAPI_STATUS)\"\
-        \n"
+      run: "echo \"Running smoke tests...\"\n\n# Health check\nSTAGING_URL=\"https://stealth-mail-staging.${{ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev\"\nHTTP_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" \"$STAGING_URL/health\" || echo \"000\")\n\nif [ \"$HTTP_STATUS\" != \"200\" ]; then\n  echo \"Health check failed with status: $HTTP_STATUS\"\n  exit 1\nfi\n\necho \"✓ Health check passed (HTTP $HTTP_STATUS)\"\n\n# API contract check\nOPENAPI_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\" \"$STAGING_URL/openapi.json\" || echo \"000\")\nif [ \"$OPENAPI_STATUS\" != \"200\" ]; then\n  echo \"OpenAPI check failed with status: $OPENAPI_STATUS\"\n  exit 1\nfi\n\necho \"✓ API contract check passed (HTTP $OPENAPI_STATUS)\"\n"
     - name: Run migration rollback test
       timeout-minutes: 20
       run: 'echo "Testing migration rollback..."
@@ -182,12 +128,7 @@ jobs:
         '
     - name: Write deployment gate result
       if: always()
-      run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail;\
-        \ fi\nnode scripts/ci/write-gate-result.mjs \\\n  --gate-id staging-deploy\
-        \ \\\n  --name \"Staging Deploy\" \\\n  --owner platform/deployment \\\n \
-        \ --dependency BETA-089 \\\n  --status \"$STATUS\" \\\n  --evidence-json '{\"\
-        commit\":\"${{ github.sha }}\",\"environment\":\"staging\",\"url\":\"https://stealth-mail-staging.${{\
-        \ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev\"}'\n"
+      run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail; fi\nnode scripts/ci/write-gate-result.mjs \\\n  --gate-id staging-deploy \\\n  --name \"Staging Deploy\" \\\n  --owner platform/deployment \\\n  --dependency BETA-089 \\\n  --status \"$STATUS\" \\\n  --evidence-json '{\"commit\":\"${{ github.sha }}\",\"environment\":\"staging\",\"url\":\"https://stealth-mail-staging.${{ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev\"}'\n"
     - name: Upload gate result
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -199,17 +140,8 @@ jobs:
       if: success()
       env:
         ARTIFACT_HASH: ${{ steps.artifact-hash.outputs.artifact_hash }}
-      run: "DEPLOYMENT_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)\nCONFIG_VERSION=$(sha256sum\
-        \ wrangler.jsonc 2>/dev/null | cut -d' ' -f1 || echo \"unknown\")\n\n# Write\
-        \ deployment record\nnode -e \"\n  const record = {\n    commit: '${{ github.sha\
-        \ }}',\n    environment: 'staging',\n    timestamp: '${DEPLOYMENT_TIME}',\n\
-        \    actor: '${{ github.actor }}',\n    url: 'https://stealth-mail-staging.${{\
-        \ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev',\n    gates_passed: true,\n  \
-        \  artifact_hash: process.env.ARTIFACT_HASH || 'unknown',\n    config_version:\
-        \ '${CONFIG_VERSION}'\n  };\n  require('fs').writeFileSync('deployment-record-staging.json',\
-        \ JSON.stringify(record, null, 2) + '\\n');\n\"\n\n# Append to deployment\
-        \ log\nmkdir -p docs/deployment\necho \"${DEPLOYMENT_TIME} | staging | ${{\
-        \ github.sha }} | ${{ github.actor }} | SUCCESS\" >> docs/deployment/deployment-log.txt\n"
+      run: "DEPLOYMENT_TIME=$(date -u +%Y-%m-%dTåH:%M:%SZ)\nCONFIG_VERSION=$(sha256sum wrangler.jsonc 2>/dev/null | cut -d' ' -f1 || echo \"unknown\")\n\n# Write deployment record\nnode -e \"\n  const record = {\n    commit: '${{ github.sha }}',\n    environment: 'staging',\n    timestamp: '${DEPLOYMENT_TIME}',\n    actor: '${{ github.actor }}',\n    url: 'https://stealth-mail-staging.${{ vars.CLOUDFLARE_SUBDOMAIN }}.workers.dev',\n    gates_passed: true,\n    artifact_hash: process.env.ARTIFACT_HASH || 'unknown',\n    config_version: '${
+CONFIG_VERSION}'\n  };\n  require('fs').writeFileSync('deployment-record-staging.json', JSON.stringify(record, null, 2) + '\\n');\n\"\n\n# Append to deployment log\nmkdir -p docs/deployment\necho \"${DEPLOYMENT_TIME} | staging | ${{ github.sha }} | ${{ github.actor }} | SUCCESS\" >> docs/deployment/deployment-log.txt\n"
     - name: Upload deployment record
       if: always()
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -235,43 +167,3 @@ jobs:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
     - name: Setup Bun
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
-      with:
-        bun-version: ${{ env.BUN_VERSION }}
-    - name: Install dependencies
-      run: bun install --frozen-lockfile
-    - name: Rollback to previous deployment
-      run: "echo \"Rolling back staging deployment...\"\n\n# Get the previous successful\
-        \ deployment\nPREVIOUS_DEPLOYMENT=$(git log --oneline -2 | tail -1 | cut -d'\
-        \ ' -f1)\n\nif [ -z \"$PREVIOUS_DEPLOYMENT\" ]; then\n  echo \"No previous\
-        \ deployment found to rollback to\"\n  exit 1\nfi\n\necho \"Rolling back to\
-        \ commit: $PREVIOUS_DEPLOYMENT\"\n\n# Checkout the previous commit\ngit checkout\
-        \ $PREVIOUS_DEPLOYMENT\n\n# Rebuild and deploy\nbun install --frozen-lockfile\n\
-        bun run build\n\nnpx wrangler@4.105.0 deploy \\\n  --config dist/server/wrangler.json\
-        \ \\\n  --name stealth-mail-staging\n\necho \"✓ Rollback completed\"\n"
-    - name: Verify rollback health
-      run: "sleep 10\nSTAGING_URL=\"https://stealth-mail-staging.${{ vars.CLOUDFLARE_SUBDOMAIN\
-        \ }}.workers.dev\"\nHTTP_STATUS=$(curl -s -o /dev/null -w \"%{http_code}\"\
-        \ \"$STAGING_URL/health\" || echo \"000\")\n\nif [ \"$HTTP_STATUS\" != \"\
-        200\" ]; then\n  echo \"Rollback health check failed with status: $HTTP_STATUS\"\
-        \n  exit 1\nfi\n\necho \"✓ Rollback health check passed (HTTP $HTTP_STATUS)\"\
-        \n"
-    - name: Record rollback
-      run: 'echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | staging | ROLLBACK | ${{ github.actor
-        }} | ROLLED BACK" >> docs/deployment/deployment-log.txt
-
-        '
-    - name: Write rollback gate result
-      if: always()
-      run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail;\
-        \ fi\nnode scripts/ci/write-gate-result.mjs \\\n  --gate-id staging-rollback\
-        \ \\\n  --name \"Staging Rollback\" \\\n  --owner platform/deployment \\\n\
-        \  --dependency BETA-089 \\\n  --status \"$STATUS\" \\\n  --evidence-json\
-        \ '{\"action\":\"rollback\",\"environment\":\"staging\",\"rolled_to\":\"previous_commit\"\
-        }'\n"
-    - name: Upload gate result
-      if: always()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: gate-staging-rollback
-        path: gate-result-staging-rollback.json
-        retention-days: 30
