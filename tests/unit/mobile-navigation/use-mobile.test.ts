@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { MOBILE_BREAKPOINT, isMobileViewport } from "../../../src/hooks/use-mobile";
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import { MOBILE_BREAKPOINT, isMobileViewport, useIsMobile } from "../../../src/hooks/use-mobile";
+import { useMediaQuery, useIsMobile as useIsMobileFromLib } from "../../../src/lib/use-media-query";
 
 describe("mobile-navigation/isMobileViewport", () => {
   it("treats typical phone and tablet widths as mobile (success path)", () => {
@@ -25,5 +28,56 @@ describe("mobile-navigation/isMobileViewport", () => {
   it("handles degenerate widths without flipping the contract (failure path)", () => {
     expect(isMobileViewport(0)).toBe(true);
     expect(isMobileViewport(-100)).toBe(true);
+  });
+
+  it("shares a single useIsMobile implementation across hooks/use-mobile and lib/use-media-query", () => {
+    expect(useIsMobileFromLib).toBe(useIsMobile);
+  });
+
+  it("attaches matchMedia listener once per query change rather than re-subscribing on match changes", () => {
+    let changeHandler: ((event: MediaQueryListEvent) => void) | null = null;
+    const addEventListener = vi.fn((_event: string, cb: (event: MediaQueryListEvent) => void) => {
+      changeHandler = cb;
+    });
+    const removeEventListener = vi.fn();
+
+    const originalMatchMedia = window.matchMedia;
+    let currentMatches = false;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      get matches() {
+        return currentMatches;
+      },
+      media: query,
+      onchange: null,
+      addEventListener,
+      removeEventListener,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    try {
+      const { result, rerender } = renderHook(({ q }) => useMediaQuery(q), {
+        initialProps: { q: "(max-width: 767px)" },
+      });
+
+      expect(result.current).toBe(false);
+      expect(addEventListener).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        currentMatches = true;
+        changeHandler?.({ matches: true } as MediaQueryListEvent);
+      });
+
+      expect(result.current).toBe(true);
+      expect(addEventListener).toHaveBeenCalledTimes(1);
+      expect(removeEventListener).toHaveBeenCalledTimes(0);
+
+      rerender({ q: "(max-width: 1024px)" });
+      expect(addEventListener).toHaveBeenCalledTimes(2);
+      expect(removeEventListener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 });
