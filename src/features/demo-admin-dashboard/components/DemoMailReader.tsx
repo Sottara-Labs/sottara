@@ -30,6 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { parseSafeContent } from "@/features/mail/safe-rendering";
 import type { DemoMessage } from "../types/dataset";
 
 interface DemoMailReaderProps {
@@ -209,7 +210,7 @@ export function DemoMailReader({ message, onBackToList }: DemoMailReaderProps) {
 
           {/* Message Body */}
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <div dangerouslySetInnerHTML={{ __html: message.body }} className="leading-relaxed" />
+            <DemoSafeMessageBody body={message.body} />
           </div>
 
           {/* Labels */}
@@ -227,6 +228,43 @@ export function DemoMailReader({ message, onBackToList }: DemoMailReaderProps) {
           )}
         </motion.div>
       </ScrollArea>
+    </div>
+  );
+}
+
+interface DemoSafeMessageBodyProps {
+  body: string;
+}
+
+export function DemoSafeMessageBody({ body }: DemoSafeMessageBodyProps) {
+  const { blocks } = parseSafeContent(body);
+
+  return (
+    <div className="leading-relaxed space-y-3" data-testid="demo-mail-reader-body">
+      {blocks.map((block, index) => {
+        if (block.kind === "paragraph") {
+          return <p key={index}>{block.text}</p>;
+        }
+        if (block.kind === "list") {
+          return (
+            <ul key={index} className="list-disc pl-5 space-y-1">
+              {block.items.map((item, itemIdx) => (
+                <li key={itemIdx}>{item}</li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <dl key={index} className="space-y-1">
+            {block.fields.map((field) => (
+              <div key={field.label} className="flex gap-2">
+                <dt className="font-medium">{field.label}:</dt>
+                <dd>{field.value}</dd>
+              </div>
+            ))}
+          </dl>
+        );
+      })}
     </div>
   );
 }
