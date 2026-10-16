@@ -9,8 +9,9 @@ describe("server security headers", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'none'");
     expect(response.headers.get("Content-Security-Policy")).toContain(
-      "img-src 'self' data: blob: https://api.dicebear.com",
+      "img-src 'self' data: blob:;",
     );
+    expect(response.headers.get("Content-Security-Policy")).not.toContain("api.dicebear.com");
     const scriptSrc = response.headers
       .get("Content-Security-Policy")
       ?.split(";")
