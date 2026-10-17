@@ -70,7 +70,6 @@ function genId(prefix: string) {
     return `${prefix}_${crypto.randomUUID()}`;
   }
 
-  const rand = generateMessageId();
   if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
     throw new CryptoIdError("cryptographically secure random source is unavailable");
   }

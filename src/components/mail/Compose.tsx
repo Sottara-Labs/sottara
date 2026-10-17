@@ -262,9 +262,7 @@ export function Compose({
   useEffect(() => {
     const addresses = parseRecipients(to);
     if (!addresses.length) {
-      if (resolvedRecipients.length > 0) {
-        setResolvedRecipients(EMPTY_RESOLVED);
-      }
+      setResolvedRecipients((prev) => (prev.length === 0 ? prev : EMPTY_RESOLVED));
       return;
     }
 
@@ -307,7 +305,7 @@ export function Compose({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [to, blockedRecipients, postage, resolutionContext, resolvedRecipients.length]);
+  }, [to, blockedRecipients, postage, resolutionContext]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
