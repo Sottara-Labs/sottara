@@ -396,24 +396,70 @@ export class InMemoryPolicyChainClient implements PolicyChainClient {
 
 let globalChainClient: PolicyChainClient | null = null;
 
-export function createPolicyChainClient(config?: BetaRuntimeConfig): PolicyChainClient | null {
+export interface CreatePolicyChainClientOptions {
+  allowInMemoryFallback?: boolean;
+}
+
+function isProductionMode(runtime?: BetaRuntimeConfig): boolean {
+  const profile = runtime?.network?.network;
+  if (profile === "production" || profile === "preview") {
+    return true;
+  }
+  if (!profile && process.env.NODE_ENV === "production") {
+    return true;
+  }
+  return false;
+}
+
+export function createPolicyChainClient(
+  config?: BetaRuntimeConfig,
+  options: CreatePolicyChainClientOptions = {},
+): PolicyChainClient {
   if (globalChainClient) return globalChainClient;
+
+  let runtime: BetaRuntimeConfig;
   try {
-    const runtime = config ?? loadRuntimeConfig();
-    if (!runtime.secrets?.operatorSecret) {
+    runtime = config ?? loadRuntimeConfig();
+  } catch (error) {
+    if (
+      process.env.NODE_ENV === "production" ||
+      options.allowInMemoryFallback === false
+    ) {
+      throw error;
+    }
+    if (options.allowInMemoryFallback === true || process.env.NODE_ENV === "test") {
       globalChainClient = new InMemoryPolicyChainClient();
       return globalChainClient;
     }
-    globalChainClient = new SorobanPolicyChainClient(runtime);
-    return globalChainClient;
-  } catch {
+    throw error;
+  }
+
+  const prod = isProductionMode(runtime);
+  const allowInMemory =
+    !prod &&
+    (options.allowInMemoryFallback ??
+      (runtime.network?.network === "test" ||
+        runtime.network?.network === "development"));
+
+  if (!runtime.secrets?.operatorSecret) {
+    if (!allowInMemory) {
+      throw new Error(
+        "Policy chain client requires STEALTH_OPERATOR_SECRET; in-memory fallback is forbidden in production",
+      );
+    }
     globalChainClient = new InMemoryPolicyChainClient();
     return globalChainClient;
   }
+
+  globalChainClient = new SorobanPolicyChainClient(runtime);
+  return globalChainClient;
 }
 
-export function getPolicyChainClient(config?: BetaRuntimeConfig): PolicyChainClient {
-  return createPolicyChainClient(config) ?? new InMemoryPolicyChainClient();
+export function getPolicyChainClient(
+  config?: BetaRuntimeConfig,
+  options?: CreatePolicyChainClientOptions,
+): PolicyChainClient {
+  return createPolicyChainClient(config, options);
 }
 
 export function setPolicyChainClientForTests(client: PolicyChainClient | null): void {

@@ -35,11 +35,7 @@ export interface PolicySyncDependencies {
 
 function resolveChainClient(deps: PolicySyncDependencies = {}): PolicyChainClient {
   if (deps.chainClient) return deps.chainClient;
-  try {
-    return createPolicyChainClient(loadRuntimeConfig()) ?? new InMemoryPolicyChainClient();
-  } catch {
-    return new InMemoryPolicyChainClient();
-  }
+  return createPolicyChainClient();
 }
 
 export async function syncMailboxPolicyWrite(
