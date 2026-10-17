@@ -201,4 +201,105 @@ describe("useSnooze hook and snooze dialog integration", () => {
       expect(patch.snooze).toBeUndefined();
     });
   });
+
+  describe("focus trap and keyboard accessibility (#408)", () => {
+    it("moves focus to the first meaningful control on open", () => {
+      render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      );
+      const firstPreset = screen.getByRole("button", { name: /Later today/i });
+      expect(document.activeElement).toBe(firstPreset);
+    });
+
+    it("cycles Tab from the last element back to the first element", () => {
+      render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      );
+      const dialog = screen.getByRole("dialog");
+      const focusableElements = dialog.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+      expect(focusableElements.length).toBeGreaterThan(1);
+      const first = focusableElements[0];
+      const last = focusableElements[focusableElements.length - 1];
+
+      last.focus();
+      expect(document.activeElement).toBe(last);
+
+      fireEvent.keyDown(document, { key: "Tab" });
+      expect(document.activeElement).toBe(first);
+    });
+
+    it("cycles Shift+Tab from the first element to the last element", () => {
+      render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      );
+      const dialog = screen.getByRole("dialog");
+      const focusableElements = dialog.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+      const first = focusableElements[0];
+      const last = focusableElements[focusableElements.length - 1];
+
+      first.focus();
+      expect(document.activeElement).toBe(first);
+
+      fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+      expect(document.activeElement).toBe(last);
+    });
+
+    it("asserts focus never escapes the dialog on Tab navigation", () => {
+      render(
+        <div>
+          <button type="button" data-testid="outside-trigger">
+            Mailbox Trigger
+          </button>
+          <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />
+        </div>,
+      );
+      const dialog = screen.getByRole("dialog");
+      const outsideButton = screen.getByTestId("outside-trigger");
+
+      expect(dialog.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement).not.toBe(outsideButton);
+
+      const focusableElements = dialog.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+      for (let i = 0; i < focusableElements.length * 2; i++) {
+        fireEvent.keyDown(document, { key: "Tab" });
+        expect(dialog.contains(document.activeElement)).toBe(true);
+      }
+    });
+
+    it("invokes onClose when Escape is pressed", () => {
+      const onClose = vi.fn();
+      render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={onClose} />,
+      );
+
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("restores focus to the trigger element when closed", () => {
+      const trigger = document.createElement("button");
+      trigger.setAttribute("data-testid", "trigger-btn");
+      document.body.appendChild(trigger);
+      trigger.focus();
+      expect(document.activeElement).toBe(trigger);
+
+      const { rerender } = render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      );
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.contains(document.activeElement)).toBe(true);
+
+      rerender(
+        <SnoozeDialog target={null} events={[]} onConfirm={vi.fn()} onClose={vi.fn()} />,
+      );
+      expect(document.activeElement).toBe(trigger);
+      document.body.removeChild(trigger);
+    });
+  });
 });
