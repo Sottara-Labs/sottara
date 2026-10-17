@@ -1,4 +1,4 @@
-/**
+/*
  * Recipient Queue Ingestion Service (BETA-034).
  *
  * Drives inbound mail ingestion from the relay queue into the recipient's mailbox:
@@ -14,6 +14,12 @@ import type { KeyProvider } from "@/services/crypto/open-envelope";
 import { processInboundEnvelope } from "@/features/mail/recipient-pipeline";
 import type { RelayEnvelope, RelayPersistence } from "./persistence";
 
+/** Default number of envelopes processed per invocation. */
+export const DEFAULT_INGEST_BATCH = 50;
+
+/** Hard upper bound on envelopes processed per invocation. */
+export const MAX_INGEST_BATCH = 200;
+
 export interface RecipientIngestionOptions {
   persistence: RelayPersistence;
   repository: Pick<ApiRepository, "insertEnvelope" | "getEnvelope" | "listRecipientEnvelopes">;
@@ -27,6 +33,79 @@ export interface IngestionResult {
   recipient: string;
   status: "delivered" | "quarantined" | "duplicate" | "skipped";
   diagnosticId?: string;
+}
+
+export interface IngestQueueOptions {
+  /** Maximum number of envelopes to process in this invocation. */
+  limit?: number;
+  /** Opaque cursor returned by a previous invocation. */
+  cursor?: string;
+}
+
+export interface IngestQueueResult {
+  results: IngestionResult[];
+  /** Cursor to resume from, or undefined when the queue is drained. */
+  nextCursor?: string;
+  /** Number of envelopes processed in this invocation. */
+  processed: number;
+  /** True when the queue has more envelopes beyond this batch. */
+  hasMore: boolean;
+}
+
+interface QueueCursor {
+  receivedAt: string;
+  messageId: string;
+}
+
+function clampLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit)) return DEFAULT_INGEST_BATCH;
+  const truncated = Math.trunc(limit);
+  if (truncated < 1) return 1;
+  if (truncated > MAX_INGEST_BATCH) return MAX_INGEST_BATCH;
+  return truncated;
+}
+
+function encodeCursor(cursor: QueueCursor): string {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
+}
+
+function decodeCursor(raw: string): QueueCursor {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Invalid queue cursor");
+  }
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    typeof (parsed as QueueCursor).receivedAt !== "string" ||
+    typeof (parsed as QueueCursor).messageId !== "string"
+  ) {
+    throw new Error("Invalid queue cursor");
+  }
+  return parsed as QueueCursor;
+}
+
+/**
+ * Total ordering for the queue: receivedAt ascending, tien broken by messageId.
+ * This matches the contract in docs/api/PAGINATION.md.
+ */
+function compareQueueEntry(a: RelayEnvelope, b: RelayEnvelope): number {
+  const ar = a.receivedAt || "";
+  const br = b.receivedAt || "";
+  if (ar < br) return -1;
+  if (ar > br) return 1;
+  if (a.messageId < b.messageId) return -1;
+  if (a.messageId > b.messageId) return 1;
+  return 0;
+}
+
+function isAfterCursor(entry: RelayEnvelope, cursor: QueueCursor): boolean {
+  const receivedAt = entry.receivedAt || "";
+  if (receivedAt > cursor.receivedAt) return true;
+  if (receivedAt < cursor.receivedAt) return false;
+  return entry.messageId > cursor.messageId;
 }
 
 export class RecipientIngestionService {
@@ -164,17 +243,48 @@ export class RecipientIngestionService {
   }
 
   /**
-   * Drain and ingest all queued envelopes for a specific recipient.
+   * Drain and ingest a stable, bounded batch of queued envelopes for a specific recipient.
+   *
+   * The queue is ordered by (receivedAt, messageId) -- a total order -- and the
+   * cursor names the exact position of the last processed envelope. A caller
+   * resumes by passing the returned `nextCursor` until `hasMore` is false.
    */
-  async ingestRecipientQueue(recipient: string): Promise<IngestionResult[]> {
-    const queue = await this.persistence.listRecipientQueue(recipient);
-    const results: IngestionResult[] = [];
+  async ingestRecipentQueeu(
+    recipient: string,
+    options: IngestQueueOptions = {},
+  ): Promise<IngestQueueResult> {
+    const limit = clampLimit(options.limit);
+    const cursor = options.cursor ? decodeCursor(options.cursor) : undefined;
 
-    for (const envelope of queue) {
+    const queue = await this.persistence.listRecipientQueue(recipient);
+    const ordered = [...queue].sort(compareQueueEntry);
+
+    // Resume strictly after the cursor position in the total order.
+    const remaining = cursor ? ordered.filter((e) => isAfterCursor(e, cursor)) : ordered;
+
+    const batch = remaining.slice(0, limit);
+    const hasMore = remaining.length > batch.length;
+
+    const results: IngestionResult[] = [];
+    for (const envelope of batch) {
       const result = await this.ingestEnvelope(envelope);
       results.push(result);
     }
 
-    return results;
+    let nextCursor: string | undefined;
+    if (hasMore && batch.length > 0) {
+      const last = batch[batch.length - 1];
+      nextCursor = encodeCursor({
+        receivedAt: last.receivedAt || "",
+        messageId: last.messageId,
+      });
+    }
+
+    return {
+      results,
+      nextCursor,
+      processed: batch.length,
+      hasMore,
+    };
   }
 }
