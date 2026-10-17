@@ -14,7 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { DEFAULT_JOURNEY_STATE, type JourneyState, type JourneyStage } from "./types";
 
-function AddressStep({
+export function AddressStep({
   state,
   update,
   next,
@@ -34,10 +34,14 @@ function AddressStep({
         </p>
       </div>
       <div className="space-y-2">
-        <label className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+        <label
+          htmlFor="sender-journey-recipient"
+          className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground"
+        >
           Recipient address
         </label>
         <input
+          id="sender-journey-recipient"
           type="text"
           placeholder="recipient*domain.com"
           value={state.recipientAddress}
@@ -62,7 +66,7 @@ function AddressStep({
   );
 }
 
-function QuoteStep({
+export function QuoteStep({
   state,
   update,
   next,
@@ -88,10 +92,14 @@ function QuoteStep({
           <span className="text-xs font-mono text-foreground">{state.recipientAddress}</span>
         </div>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs text-muted-foreground">Postage</span>
+          <label htmlFor="sender-journey-postage" className="text-xs text-muted-foreground">
+            Postage
+          </label>
           <div className="flex items-center gap-2">
             <input
+              id="sender-journey-postage"
               type="number"
+              aria-label="Postage"
               value={state.postageAmount}
               onChange={(e) => update({ postageAmount: e.target.value })}
               className="w-24 rounded border border-surface-tint/10 bg-surface-recessed/30 px-2 py-1 text-sm font-mono text-foreground"
@@ -168,7 +176,7 @@ function IdentityStep({ next, back }: { next: () => void; back: () => void }) {
   );
 }
 
-function PaymentStep({
+export function PaymentStep({
   state,
   update,
   next,
@@ -205,10 +213,14 @@ function PaymentStep({
       </div>
 
       <div className="space-y-2">
-        <label className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+        <label
+          htmlFor="sender-journey-subject"
+          className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground"
+        >
           Subject
         </label>
         <input
+          id="sender-journey-subject"
           type="text"
           placeholder="Quick question..."
           value={state.subject}
@@ -218,10 +230,14 @@ function PaymentStep({
       </div>
 
       <div className="space-y-2">
-        <label className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+        <label
+          htmlFor="sender-journey-message"
+          className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground"
+        >
           Message
         </label>
         <textarea
+          id="sender-journey-message"
           placeholder="Hi there, I'd love to connect..."
           value={state.body}
           onChange={(e) => update({ body: e.target.value })}
@@ -246,8 +262,12 @@ function PaymentStep({
           )}
         </div>
         <div className="mt-3 flex items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+          <label
+            htmlFor="sender-journey-simulate-payment-failure"
+            className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
+          >
             <input
+              id="sender-journey-simulate-payment-failure"
               type="checkbox"
               checked={simulateFailure}
               onChange={(e) => setSimulateFailure(e.target.checked)}
@@ -322,7 +342,7 @@ function PaymentStep({
   );
 }
 
-function DeliveryStep({
+export function DeliveryStep({
   state,
   update,
   next,
@@ -388,8 +408,12 @@ function DeliveryStep({
 
         {state.deliveryStatus === "idle" && (
           <div className="mt-3 flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+            <label
+              htmlFor="sender-journey-simulate-delivery-failure"
+              className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none"
+            >
               <input
+                id="sender-journey-simulate-delivery-failure"
                 type="checkbox"
                 checked={simulateFailure}
                 onChange={(e) => setSimulateFailure(e.target.checked)}
