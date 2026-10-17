@@ -268,8 +268,11 @@ export function FeedbackPanel() {
                   className="hover:bg-accent/20 dark:hover:bg-neutral-900/20 transition-colors"
                 >
                   {/* Summary row */}
-                  <div
-                    className="flex items-center gap-3 p-4 cursor-pointer"
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-controls={`report-detail-${report.reportId}`}
+                    className="flex w-full items-center gap-3 p-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     onClick={() => setExpandedId(isExpanded ? null : report.reportId)}
                   >
                     <Bug className="size-4 text-muted-foreground dark:text-neutral-500 shrink-0" />
@@ -303,11 +306,14 @@ export function FeedbackPanel() {
                         <ChevronDown className="size-3.5 text-muted-foreground dark:text-neutral-500 ml-auto mt-1" />
                       )}
                     </div>
-                  </div>
+                  </button>
 
                   {/* Expanded detail */}
                   {isExpanded && (
-                    <div className="px-4 pb-4 space-y-3 border-t border-border/60 dark:border-neutral-800/60">
+                    <div
+                      id={`report-detail-${report.reportId}`}
+                      className="px-4 pb-4 space-y-3 border-t border-border/60 dark:border-neutral-800/60"
+                    >
                       <div className="grid grid-cols-2 gap-3 pt-3">
                         <div className="bg-background dark:bg-neutral-950 rounded-lg p-3">
                           <div className="text-[11px] text-muted-foreground dark:text-neutral-500 mb-1">
