@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, Networks, TransactionBuilder, Operation, Account } from "@stellar/stellar-sdk";
 import {
   PostageEscrowAdapter,
   classifyRetry,
@@ -283,5 +283,46 @@ describe("PostageEscrowAdapter", () => {
       postage,
       confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
     });
+  });
+
+  it("returns typed txHash on PostageEscrowResult when confirmation times out (#329)", async () => {
+    const kp = Keypair.random();
+    const account = new Account(kp.publicKey(), "1");
+    const dummyXdr = new TransactionBuilder(account, {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.bumpSequence({ bumpTo: "2" }))
+      .setTimeout(30)
+      .build()
+      .toXDR();
+
+    const adapter = new PostageEscrowAdapter({
+      config: makeConfig(),
+      managedWallet: {
+        signTransaction: vi.fn().mockResolvedValue(dummyXdr),
+      } as never,
+    });
+    vi.spyOn(adapter as any, "makeClient").mockReturnValue({});
+    vi.spyOn(adapter as any, "makeRpcServer").mockReturnValue({
+      sendTransaction: vi.fn().mockResolvedValue({
+        status: "PENDING",
+        hash: "timed-out-tx-hash-999",
+      }),
+    });
+    vi.spyOn(adapter as any, "confirm").mockResolvedValue(null);
+
+    const res = await (adapter as any).runOperation(
+      "submit",
+      { type: "postage", senderAddress: kp.publicKey(), amountStroops: "1000" },
+      kp.publicKey(),
+      "a".repeat(64),
+      async () => ({ transactionXdr: dummyXdr }),
+    );
+
+    expect(res.success).toBe(false);
+    expect(res.chainStatus).toBe("submitted");
+    expect(res.retryClassification).toBe("safe");
+    expect(res.txHash).toBe("timed-out-tx-hash-999");
   });
 });
