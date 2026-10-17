@@ -382,10 +382,10 @@ async function runOnChainAndSync(
   // of success — callers need this information for retries and UI surfacing.
   const basePatch: PatchFields = {
     chainStatus: chain.chainStatus,
-    txHash: chain.confirmation?.txHash ?? null,
+    txHash: chain.confirmation?.txHash ?? chain.txHash ?? null,
     ledger: chain.confirmation?.ledger ?? null,
     lastError: chain.lastError ?? null,
-    submittedAt: chain.confirmation ? now : undefined,
+    submittedAt: chain.confirmation || chain.txHash ? now : undefined,
     confirmedAt: chain.success ? now : undefined,
   };
 
