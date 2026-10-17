@@ -34,6 +34,7 @@ jobs:
     name: Governance Checks
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
@@ -265,6 +266,7 @@ jobs:
     needs:
     - contract-checks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
     - name: Download contract wasm
