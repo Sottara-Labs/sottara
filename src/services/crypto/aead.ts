@@ -109,7 +109,8 @@ export interface OpenAeadResult {
 
 /**
  * Open a canonical AEAD envelope part: decrypt `ciphertext` with `tag` and
- * `nonce` under `key`. Fails closed on any authentication failure. Uses the`r`n * single `joinTag` formatter so it matches `sealAead` exactly.
+ * `nonce` under `key`. Fails closed on any authentication failure. Uses the
+ * single `joinTag` formatter so it matches `sealAead` exactly.
  */
 export async function openAead(
   key: CryptoKey,
