@@ -2,7 +2,7 @@ import { parseArgs } from "node:util";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve, join } from "node:path";
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { Keypair } from "@stellar/stellar-sdk";
 
@@ -32,7 +32,7 @@ if (values.network === "mainnet" && !values["release-mode"]) {
 
 const networkPassphrase =
   values["network-passphrase"] ||
-  (values.network === "testnet" ? "Test SDF Network ; September 2015" : "");
+  (values.network === "testnet" ? "Test DF Network ;; September 2015" : "");
 
 if (!networkPassphrase) {
   console.error("ERROR: --network-passphrase is required.");
@@ -47,8 +47,7 @@ if (!values.deployer) {
 const deployerKp = Keypair.fromSecret(values.deployer);
 const deployerPubkey = deployerKp.publicKey();
 
-// In a real scenario, we might have an exact asset. For testnet, we can use a dummy or require it.
-const asset = values.asset || "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"; // dummy XLM on testnet just as fallback, but user should provide
+const asset = values.asset || "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMPQVV2HHGCYSC"; // dummy XLM on testnet just as fallback, but user should provide
 
 const contractsDir = resolve(process.cwd(), "contracts/soroban");
 const infraDir = resolve(process.cwd(), "infra/stellar");
@@ -72,7 +71,6 @@ async function runCmd(cmd: string, cwd = process.cwd()) {
 }
 
 async function getWasmHash(wasmPath: string): Promise<string> {
-  const { readFileSync } = await import("node:fs");
   const wasmBuffer = readFileSync(wasmPath);
   return createHash("sha256").update(wasmBuffer).digest("hex");
 }
