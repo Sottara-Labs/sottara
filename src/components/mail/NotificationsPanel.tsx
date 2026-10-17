@@ -1,8 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Mail, Bell, Check } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 
 import type { InAppNotification } from "@/features/notifications";
 
@@ -29,12 +30,38 @@ export function NotificationsPanel({
 }) {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const close = useCallback(() => closeRef.current(), []);
+  const dialogRef = useFocusTrap(open, close);
+
+  const setRefs = useCallback(
+    (node: HTMLDivElement | null) => {
+      (dialogRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      if (typeof panelRef === "function") {
+        panelRef(node);
+      } else if (panelRef && typeof panelRef === "object" && "current" in panelRef) {
+        (panelRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      }
+    },
+    [dialogRef, panelRef],
+  );
+
+  // Move initial focus to the first focusable control inside the panel when open
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    const focusFirst = () => {
+      if (!dialogRef.current) return;
+      const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+        "a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+      firstFocusable?.focus();
+    };
+
+    focusFirst();
+    const t = globalThis.setTimeout(focusFirst, 0);
+    return () => globalThis.clearTimeout(t);
+  }, [open]);
 
   if (typeof document === "undefined") return null;
 
@@ -60,9 +87,12 @@ export function NotificationsPanel({
             className="fixed inset-0 z-[100] bg-overlay/40 backdrop-blur-xl"
           />
           <motion.div
-            ref={panelRef}
+            ref={setRefs}
             role="dialog"
+            aria-modal="true"
             aria-label="Notifications"
+            aria-labelledby="notifications-panel-heading"
+            tabIndex={-1}
             initial={{ opacity: 0, y: -8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
@@ -75,12 +105,12 @@ export function NotificationsPanel({
               maxWidth: "calc(100vw - 16px)",
               zIndex: 110,
             }}
-            className="glass-modal overflow-hidden rounded-2xl"
+            className="glass-modal overflow-hidden rounded-2xl outline-none"
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-surface-tint/5 px-4 py-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-foreground">Notifications</h3>
+                <h3 id="notifications-panel-heading" className="text-sm font-semibold text-foreground">Notifications</h3>
                 {unreadCount > 0 && (
                   <span className="rounded-full bg-surface-tint/10 px-2 py-0.5 text-[10px] text-muted-foreground">
                     {unreadCount} new
