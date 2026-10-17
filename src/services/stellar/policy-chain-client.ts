@@ -105,6 +105,24 @@ function fromContractSenderRule(rule: ContractSenderRule | number): SenderRule {
   }
 }
 
+export function extractBuiltUnsignedXdr(
+  assembled: contract.AssembledTransaction<unknown>,
+  methodName: string,
+): string {
+  const simulation = (
+    assembled as {
+      simulation?: { error?: string; events?: unknown[] };
+    }
+  ).simulation;
+  if (simulation && typeof simulation.error === "string" && simulation.error.length > 0) {
+    throw new Error(`Simulation failed for ${methodName}: ${simulation.error}`);
+  }
+  if (!assembled.built) {
+    throw new Error(`Simulation did not produce a built transaction for ${methodName}`);
+  }
+  return assembled.built.toEnvelope().toXDR("base64");
+}
+
 export class SorobanPolicyChainClient implements PolicyChainClient {
   private readonly rpc: rpc.Server;
   private readonly wallet: ManagedWalletService;
@@ -186,7 +204,7 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       policy: toContractPolicy(policy),
     });
 
-    const unsignedXdr = assembled.built!.toEnvelope().toXDR("base64");
+    const unsignedXdr = extractBuiltUnsignedXdr(assembled, "set_policy");
     const signedXdr = await this.wallet.signTransaction(
       { type: "policy", ownerAddress: owner },
       actorAddress,
@@ -219,7 +237,7 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       rule: toContractSenderRule(rule),
     });
 
-    const unsignedXdr = assembled.built!.toEnvelope().toXDR("base64");
+    const unsignedXdr = extractBuiltUnsignedXdr(assembled, "set_sender_rule");
     const signedXdr = await this.wallet.signTransaction(
       { type: "policy", ownerAddress: owner },
       actorAddress,
@@ -252,7 +270,7 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       minimum_postage: BigInt(minimumPostage),
     });
 
-    const unsignedXdr = assembled.built!.toEnvelope().toXDR("base64");
+    const unsignedXdr = extractBuiltUnsignedXdr(assembled, "set_sender_tier");
     const signedXdr = await this.wallet.signTransaction(
       { type: "policy", ownerAddress: owner },
       actorAddress,
