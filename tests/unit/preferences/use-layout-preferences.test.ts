@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { clampLayoutPreferences } from "../../../src/features/preferences/useLayoutPreferences";
+// @vitest-environment jsdom
+
+import { describe, expect, it, vi } from "vitest";
+import { renderHook, act } from "@testing-library/react";
+import {
+  clampLayoutPreferences,
+  useLayoutPreferences,
+} from "../../../src/features/preferences/useLayoutPreferences";
 import {
   defaultLayoutPreferences,
   type LayoutPreferences,
@@ -78,5 +84,62 @@ describe("preferences/clampLayoutPreferences", () => {
     expect(result.sidebarCollapsed).toBe(true);
     expect(result.rightPanelCollapsed).toBe(true);
     expect(result.compactMode).toBe(true);
+  });
+});
+
+describe("preferences/useLayoutPreferences storage resilience (Issue #394)", () => {
+  it("applies layout preference changes in memory when localStorage.setItem throws (DOMException)", () => {
+    const store = new Map<string, string>();
+    const mockStorage = {
+      getItem: vi.fn((k: string) => store.get(k) ?? null),
+      setItem: vi.fn(() => {
+        throw new DOMException("QuotaExceededError", "QuotaExceededError");
+      }),
+      removeItem: vi.fn((k: string) => {
+        store.delete(k);
+      }),
+      clear: vi.fn(() => store.clear()),
+      length: 0,
+      key: vi.fn(() => null),
+    };
+    vi.stubGlobal("localStorage", mockStorage);
+
+    const { result, unmount } = renderHook(() => useLayoutPreferences());
+
+    expect(result.current.hydrated).toBe(true);
+    expect(result.current.layout.sidebarWidth).toBe(defaultLayoutPreferences.sidebarWidth);
+
+    // Update layout preference
+    act(() => {
+      result.current.setLayout({ sidebarWidth: 25 });
+    });
+
+    // In-memory state must update successfully and component must remain mounted
+    expect(result.current.layout.sidebarWidth).toBe(25);
+
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("loads in-memory defaults without crashing when localStorage.getItem throws", () => {
+    const mockStorage = {
+      getItem: vi.fn(() => {
+        throw new DOMException("SecurityError", "SecurityError");
+      }),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      length: 0,
+      key: vi.fn(() => null),
+    };
+    vi.stubGlobal("localStorage", mockStorage);
+
+    const { result, unmount } = renderHook(() => useLayoutPreferences());
+
+    expect(result.current.hydrated).toBe(true);
+    expect(result.current.layout).toEqual(defaultLayoutPreferences);
+
+    unmount();
+    vi.unstubAllGlobals();
   });
 });

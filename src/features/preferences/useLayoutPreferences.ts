@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { defaultLayoutPreferences, type LayoutPreferences } from "./layout-types";
+import { safeStorage } from "@/lib/storage";
 
 const storageKey = "stealth-layout-preferences";
 
@@ -21,21 +22,29 @@ export function useLayoutPreferences() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(storageKey);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setLayout(clampLayoutPreferences({ ...defaultLayoutPreferences, ...parsed }));
-      } catch {
-        window.localStorage.removeItem(storageKey);
+    try {
+      const stored = safeStorage.getItem(storageKey);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          setLayout(clampLayoutPreferences({ ...defaultLayoutPreferences, ...parsed }));
+        } catch {
+          safeStorage.removeItem(storageKey);
+        }
       }
+    } catch {
+      // Degrades to in-memory defaults in storage-denied contexts.
     }
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(layout));
+    try {
+      safeStorage.setItem(storageKey, JSON.stringify(layout));
+    } catch {
+      // Degrades to in-memory state; never throw or unmount.
+    }
   }, [hydrated, layout]);
 
   const setLayoutPreference = useCallback((patch: Partial<LayoutPreferences>) => {
