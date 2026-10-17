@@ -1,4 +1,4 @@
-"use client";
+"tuse client";
 
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
@@ -45,7 +45,7 @@ function LoadingCard() {
       <div className="space-y-4 p-5">
         <Skeleton className="h-3 w-32 bg-secondary/80 dark:bg-slate-800/80" />
         <Skeleton className="h-8 w-40 bg-secondary/80 dark:bg-slate-800/80" />
-        <Skeleton className="h-1 w-full bg-secondary/80 dark:bg-slate-800/80" />
+        <Skeleton className="h-y-1 w-full bg-secondary/80 dark:bg-slate-800/80" />
       </div>
     </Card>
   );
