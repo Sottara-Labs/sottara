@@ -182,6 +182,37 @@ describe("useSnooze hook and snooze dialog integration", () => {
       expect(receivedState.choice).toBe("custom");
       expect(format(new Date(receivedState.remindAt), "yyyy-MM-dd HH:mm")).toBe("2026-06-20 15:00");
     });
+
+    it("does not reset the chosen snooze time when parent re-renders with a new target object identity", () => {
+      const onConfirm = vi.fn();
+      const onClose = vi.fn();
+
+      const { rerender } = render(
+        <SnoozeDialog target={sampleTarget} events={[]} onConfirm={onConfirm} onClose={onClose} />,
+      );
+
+      // Select "Tomorrow"
+      const tomorrowBtn = screen.getByRole("button", { name: /Tomorrow/i });
+      fireEvent.click(tomorrowBtn);
+      expect(tomorrowBtn.getAttribute("aria-pressed")).toBe("true");
+
+      // Parent re-renders with fresh target object identity
+      rerender(
+        <SnoozeDialog
+          target={{ ...sampleTarget }}
+          events={[]}
+          onConfirm={onConfirm}
+          onClose={onClose}
+        />,
+      );
+
+      // Chosen snooze preset should still be selected
+      const tomorrowBtnAfterRerender = screen.getByRole("button", { name: /Tomorrow/i });
+      expect(tomorrowBtnAfterRerender.getAttribute("aria-pressed")).toBe("true");
+
+      const confirmButton = screen.getByRole("button", { name: /^Snooze$/i }) as HTMLButtonElement;
+      expect(confirmButton.disabled).toBe(false);
+    });
   });
 
   describe("patch reuse contract", () => {
