@@ -1,4 +1,4 @@
-import { CryptoIdError, generateMessageId } from "../../../services/crypto/random";
+import { generateMessageId } from "../../../services/crypto/random";
 import { ApiError } from "../errors";
 import {
   type BetaCapability,
@@ -71,12 +71,6 @@ function genId(prefix: string) {
   }
 
   const rand = generateMessageId();
-  if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
-    throw new CryptoIdError("cryptographically secure random source is unavailable");
-  }
-
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  const rand = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${prefix}_${rand}`;
 }
 
