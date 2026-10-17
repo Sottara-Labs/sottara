@@ -22,6 +22,22 @@ export interface PolicyChainSubmitResult {
   txHash: string;
 }
 
+export class PolicyTransactionFailedError extends Error {
+  public readonly txHash: string;
+  public readonly status: string;
+
+  constructor(txHash: string, status: string, detail?: string) {
+    super(
+      detail
+        ? `Policy transaction ${txHash} failed on-chain (${status}): ${detail}`
+        : `Policy transaction ${txHash} failed on-chain (${status})`,
+    );
+    this.name = "PolicyTransactionFailedError";
+    this.txHash = txHash;
+    this.status = status;
+  }
+}
+
 export interface PolicyChainClient {
   readVersionedPolicy(owner: string): Promise<VersionedChainPolicy | null>;
   readMailboxPolicy(
@@ -272,10 +288,20 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
 
     const hash = response.hash ?? tx.hash().toString("hex");
     if (response.status === "PENDING" || response.status === "DUPLICATE") {
-      await this.rpc.pollTransaction(hash, {
+      const polled = await this.rpc.pollTransaction(hash, {
         attempts: 30,
         sleepStrategy: rpc.LinearSleepStrategy,
       });
+      if (polled.status !== "SUCCESS") {
+        const detail = (
+          polled as {
+            resultXdr?: { result?: () => { switch?: () => { name?: string } } };
+          }
+        ).resultXdr
+          ?.result?.()
+          ?.switch?.()?.name;
+        throw new PolicyTransactionFailedError(hash, polled.status, detail);
+      }
     }
 
     return { txHash: hash };
