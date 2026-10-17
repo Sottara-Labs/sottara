@@ -95,6 +95,13 @@ export function EmailList({
   const loadMoreRef = useRef<HTMLLIElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
+  const movePickerRef = useRef(movePicker);
+  movePickerRef.current = movePicker;
 
   // BETA-074 — scroll window tracking for virtualization.
   const [scrollTop, setScrollTop] = useState(0);
@@ -136,7 +143,7 @@ export function EmailList({
 
   useEffect(() => {
     onSelectRef.current = onSelect;
-  });
+  }, [onSelect]);
 
   useEffect(() => {
     const node = listRef.current;
@@ -148,7 +155,7 @@ export function EmailList({
 
       if (event.key === "Escape") {
         event.preventDefault();
-        if (movePicker) {
+        if (movePickerRef.current) {
           setMovePicker(null);
           return;
         }
@@ -158,14 +165,14 @@ export function EmailList({
         if (focused && ["INPUT", "TEXTAREA", "SELECT"].includes((focused as HTMLElement).tagName))
           return;
         event.preventDefault();
-        const ids = selectedId ? [selectedId] : [];
+        const ids = selectedIdRef.current ? [selectedIdRef.current] : [];
         if (ids.length > 0) setMovePicker({ emailIds: ids });
       }
     };
 
     node.addEventListener("keydown", onKeyDown);
     return () => node.removeEventListener("keydown", onKeyDown);
-  });
+  }, []);
 
   useEffect(() => {
     if (!hasMore || !onLoadMore || virtualItems.length === 0) return;
