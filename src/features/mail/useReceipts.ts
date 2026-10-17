@@ -25,7 +25,7 @@ import {
 // Offline receipt queue (localStorage)
 // ---------------------------------------------------------------------------
 
-const RECEIPT_QUEUE_KEY = "stealth.receipts.queue.v1";
+export const RECEIPT_QUEUE_KEY = "stealth.receipts.queue.v1";
 
 export interface QueuedReceiptAction {
   messageId: string;
@@ -33,7 +33,7 @@ export interface QueuedReceiptAction {
   queuedAt: string;
 }
 
-function readReceiptQueue(): QueuedReceiptAction[] {
+export function readReceiptQueue(): QueuedReceiptAction[] {
   try {
     const raw = localStorage.getItem(RECEIPT_QUEUE_KEY);
     if (!raw) return [];
@@ -44,7 +44,7 @@ function readReceiptQueue(): QueuedReceiptAction[] {
   }
 }
 
-function writeReceiptQueue(queue: QueuedReceiptAction[]): void {
+export function writeReceiptQueue(queue: QueuedReceiptAction[]): void {
   try {
     localStorage.setItem(RECEIPT_QUEUE_KEY, JSON.stringify(queue));
   } catch {
@@ -52,14 +52,17 @@ function writeReceiptQueue(queue: QueuedReceiptAction[]): void {
   }
 }
 
-function enqueueReceiptAction(action: QueuedReceiptAction): void {
+export function enqueueReceiptAction(action: QueuedReceiptAction): void {
   const queue = readReceiptQueue();
   if (queue.some((e) => e.messageId === action.messageId && e.action === action.action)) return;
   queue.push(action);
   writeReceiptQueue(queue);
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent("stealth:receipt-enqueued", { detail: action }));
+  }
 }
 
-function dequeueReceiptAction(messageId: string, action: "read"): QueuedReceiptAction | undefined {
+export function dequeueReceiptAction(messageId: string, action: "read"): QueuedReceiptAction | undefined {
   const queue = readReceiptQueue();
   const idx = queue.findIndex((e) => e.messageId === messageId && e.action === action);
   if (idx === -1) return undefined;
@@ -68,7 +71,7 @@ function dequeueReceiptAction(messageId: string, action: "read"): QueuedReceiptA
   return removed;
 }
 
-function clearReceiptQueue(): void {
+export function clearReceiptQueue(): void {
   try {
     localStorage.removeItem(RECEIPT_QUEUE_KEY);
   } catch {
@@ -195,30 +198,62 @@ export function useMarkReadReceipt(actor: string | null) {
 
 export function useReceiptQueueReplay(actor: string | null, online: boolean) {
   const { mutateAsync: markRead } = useMarkReadReceipt(actor);
-  const replayedRef = useRef(false);
+  const flushedIdsRef = useRef<Set<string>>(new Set());
+  const isFlushingRef = useRef(false);
 
-  useEffect(() => {
-    if (!online || !actor) return;
-    if (replayedRef.current) return;
-    replayedRef.current = true;
+  const flush = useCallback(async () => {
+    if (!online || !actor || isFlushingRef.current) return;
+    isFlushingRef.current = true;
+    try {
+      const queue = readReceiptQueue();
+      if (queue.length === 0) return;
 
-    const queue = readReceiptQueue();
-    if (queue.length === 0) return;
-
-    void (async () => {
       for (const entry of queue) {
+        if (flushedIdsRef.current.has(entry.messageId)) continue;
         if (entry.action === "read") {
+          flushedIdsRef.current.add(entry.messageId);
           dequeueReceiptAction(entry.messageId, "read");
           try {
-            await markRead(entry.messageId);
+            const res = await markRead(entry.messageId);
+            if (!res) {
+              // markRead fell back to offline queue; allow retry on next flush
+              flushedIdsRef.current.delete(entry.messageId);
+            }
           } catch {
-            // Re-enqueue on failure.
+            // Re-enqueue on failure and allow retry.
+            flushedIdsRef.current.delete(entry.messageId);
             enqueueReceiptAction(entry);
           }
         }
       }
-    })();
+    } finally {
+      isFlushingRef.current = false;
+    }
   }, [actor, online, markRead]);
+
+  useEffect(() => {
+    void flush();
+
+    const handleQueueActivity = () => {
+      void flush();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("storage", handleQueueActivity);
+      window.addEventListener("online", handleQueueActivity);
+      window.addEventListener("stealth:receipt-enqueued", handleQueueActivity);
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("storage", handleQueueActivity);
+        window.removeEventListener("online", handleQueueActivity);
+        window.removeEventListener("stealth:receipt-enqueued", handleQueueActivity);
+      }
+    };
+  }, [flush]);
+
+  return { flush };
 }
 
 // ---------------------------------------------------------------------------
