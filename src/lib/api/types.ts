@@ -494,10 +494,11 @@ export interface ProfileUpdateResponse {
 
 export type WalletActivationState = "pending" | "active" | "failed";
 export type WalletStatusFreshness = "fresh" | "stale" | "unavailable";
+export type WalletNetwork = "testnet" | "mainnet" | "futurenet" | "local";
 
 export interface PublicWalletStatus {
   address: string;
-  network: "testnet";
+  network: WalletNetwork;
   networkPassphrase: string;
   balanceXlm: string | null;
   activation: WalletActivationState;
