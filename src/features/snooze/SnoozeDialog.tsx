@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, CalendarClock, Check, Clock, X } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { getLocalTimeZone, getReferenceNow, type CalendarEvent } from "@/features/calendar";
 import type { SnoozeState } from "@/components/mail/data";
 import type { SnoozeTarget } from "./useSnooze";
@@ -42,6 +43,34 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
   const [customDate, setCustomDate] = useState("");
   const [customTime, setCustomTime] = useState("");
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const close = useCallback(() => closeRef.current(), []);
+  const dialogRef = useFocusTrap(target !== null, close);
+
+  // Move initial focus to the first meaningful control (preset button) on open
+  useEffect(() => {
+    if (!target) return;
+    const focusFirstControl = () => {
+      if (!dialogRef.current) return;
+      const firstPreset = dialogRef.current.querySelector<HTMLElement>(
+        "button[data-snooze-preset], .grid button",
+      );
+      if (firstPreset) {
+        firstPreset.focus();
+        return;
+      }
+      const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+        "button:not([aria-label='Cancel']), button",
+      );
+      firstFocusable?.focus();
+    };
+
+    focusFirstControl();
+    const t = globalThis.setTimeout(focusFirstControl, 0);
+    return () => globalThis.clearTimeout(t);
+  }, [target]);
+
   // Seed from an existing reminder when editing; otherwise start blank so no
   // option is pre-applied.
   useEffect(() => {
@@ -59,15 +88,6 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
       setCustomTime("");
     }
   }, [target?.emailId, initialState, target]);
-
-  useEffect(() => {
-    if (!target) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [target, onClose]);
 
   // Resolve the selected choice into a concrete reminder + validity. Memoized so
   // the preview and conflict list recompute only when inputs change.
@@ -111,9 +131,12 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
           />
           <motion.div
             key="snooze-panel"
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label="Snooze message"
+            aria-labelledby="snooze-dialog-title"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -121,14 +144,14 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
             onKeyDown={(event) => {
               if (event.key === "Enter" && canConfirm) handleConfirm();
             }}
-            className="glass-strong fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl"
+            className="glass-strong fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-3 px-6 pt-5">
               <div className="min-w-0 space-y-1">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                   {initialState ? "Edit snooze" : "Snooze until"}
                 </p>
-                <h2 className="truncate text-base font-semibold text-foreground">
+                <h2 id="snooze-dialog-title" className="truncate text-base font-semibold text-foreground">
                   {target.subject}
                 </h2>
               </div>
@@ -148,6 +171,7 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
                   return (
                     <button
                       key={preset.id}
+                      data-snooze-preset={preset.id}
                       onClick={() => setChoice(preset.id)}
                       aria-pressed={selected}
                       className={cn(
