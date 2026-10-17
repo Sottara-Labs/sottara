@@ -32,6 +32,8 @@ export function RequestCard({
   const [timeLeft, setTimeLeft] = useState(100);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(0);
+  const onFinalizeActionRef = useRef(onFinalizeAction);
+  onFinalizeActionRef.current = onFinalizeAction;
   const duration = 3000; // 3 seconds undo window
 
   const getActionFromStatus = (status: CardStatus): TriageAction | null => {
@@ -61,8 +63,8 @@ export function RequestCard({
         if (elapsed < duration) {
           timerRef.current = setTimeout(updateProgress, 30);
         } else {
-          // Finalize the action
-          onFinalizeAction(email.id, currentAction);
+          // Finalize the action with latest handler
+          onFinalizeActionRef.current(email.id, currentAction);
         }
       };
 
