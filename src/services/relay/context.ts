@@ -71,6 +71,18 @@ function buildOnAcceptedHook(repo: ApiRepository): RelayServiceConfig["onAccepte
   };
 }
 
+/**
+ * Cache the constructed service and start its worker. Both paths that serve the
+ * relay API must drain the queue they accept mail into, so starting is part of
+ * construction rather than an optional follow-up (Issue #316). `start()` is
+ * idempotent, and the singleton guard ensures it runs once per runtime.
+ */
+function activateRelayService(worker: InProcessRelayWorker, service: RelayService): RelayService {
+  globalRelay.__stealthRelayService = service;
+  void worker.start();
+  return service;
+}
+
 export async function getRelayService(): Promise<RelayService> {
   if (globalRelay.__stealthRelayService) {
     return globalRelay.__stealthRelayService;
@@ -90,20 +102,22 @@ export async function getRelayService(): Promise<RelayService> {
   if (!import.meta.env.PROD) {
     const persistence = new MemoryRelayPersistence();
     const worker = new InProcessRelayWorker(persistence);
-    globalRelay.__stealthRelayService = new RelayService(
-      persistence,
+    return activateRelayService(
       worker,
-      {
-        ...relayConfig,
-        onAccepted: buildOnAcceptedHook(repository),
-      },
-      {
-        evaluator,
-        mailbox: repository,
-        repository,
-      },
+      new RelayService(
+        persistence,
+        worker,
+        {
+          ...relayConfig,
+          onAccepted: buildOnAcceptedHook(repository),
+        },
+        {
+          evaluator,
+          mailbox: repository,
+          repository,
+        },
+      ),
     );
-    return globalRelay.__stealthRelayService;
   }
 
   const { env } = await import("cloudflare:workers");
@@ -124,19 +138,21 @@ export async function getRelayService(): Promise<RelayService> {
     ? createRelayObjectStore(env.STEALTH_OBJECT_STORE)
     : undefined;
 
-  globalRelay.__stealthRelayService = new RelayService(
-    persistence,
+  return activateRelayService(
     worker,
-    {
-      ...relayConfig,
-      onAccepted: buildOnAcceptedHook(repository),
-    },
-    {
-      evaluator,
-      objectStore,
-      mailbox: repository,
-      repository,
-    },
+    new RelayService(
+      persistence,
+      worker,
+      {
+        ...relayConfig,
+        onAccepted: buildOnAcceptedHook(repository),
+      },
+      {
+        evaluator,
+        objectStore,
+        mailbox: repository,
+        repository,
+      },
+    ),
   );
-  return globalRelay.__stealthRelayService;
 }
