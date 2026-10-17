@@ -226,6 +226,9 @@ export function ContactMigrationDialog({
           />
           <motion.div
             key="migration-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-migration-title"
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
@@ -236,10 +239,14 @@ export function ContactMigrationDialog({
             <div className="flex items-center justify-between border-b border-surface-tint/5 px-5 py-4">
               <div className="flex items-center gap-2.5">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold text-foreground">Contact migration</h2>
+                <h2 id="contact-migration-title" className="text-sm font-semibold text-foreground">
+                  Contact migration
+                </h2>
               </div>
               <button
+                type="button"
                 onClick={onClose}
+                aria-label="Close"
                 className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-surface-tint/[0.06] hover:text-foreground"
               >
                 <X className="h-4 w-4" />
