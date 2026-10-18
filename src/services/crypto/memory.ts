@@ -115,13 +115,15 @@ export function fromBase64(b64: string): Uint8Array {
 /**
  * SHA-256 hash of raw bytes, returned as a lowercase hex string.
  *
- * Avoids redundant wrapping when the input is already an ArrayBuffer-backed
- * Uint8Array. A copy is made only when the backing buffer is not an
- * ArrayBuffer (e.g. SharedArrayBuffer) to satisfy the Web Crypto type.
+ * Only the bytes inside the view are hashed. When the input is a subarray
+ * with a non-zero byteOffset, the backing ArrayBuffer is sliced to the view
+ * bounds so bytes outside the view are excluded from the digest.
  */
 export async function digestHex(data: Uint8Array): Promise<string> {
   const source: Uint8Array<ArrayBuffer> =
-    data.buffer instanceof ArrayBuffer ? (data as Uint8Array<ArrayBuffer>) : new Uint8Array(data);
+    data.buffer instanceof ArrayBuffer
+      ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+      : new Uint8Array(data);
   const digest = await crypto.subtle.digest("SHA-256", source);
   return toHex(new Uint8Array(digest));
 }
