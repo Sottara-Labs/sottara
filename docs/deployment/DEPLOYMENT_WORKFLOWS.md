@@ -217,7 +217,7 @@ After production deployment:
 
 1. Multiple health checks (5 iterations)
 2. Stability verification
-3. Side effect verification
+3. Side effect verification (downloads the deployment log artifact and fails when it records two successful deployments for the same commit)
 4. Gate result recording
 
 ## Troubleshooting
