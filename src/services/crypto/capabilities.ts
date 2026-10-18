@@ -11,6 +11,7 @@
  */
 
 import { SUITE_REGISTRY, getDefaultVersion } from "./suites";
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS, MAX_BODY_BYTES } from "./limits";
 
 /** A single supported algorithm suite entry. */
 export interface SuiteCapability {
@@ -31,9 +32,9 @@ export const CRYPTO_SUITE_REGISTRY = {
   })) as SuiteCapability[],
   keyFormats: ["raw", "jwk"] as const,
   limits: {
-    maxBodyBytes: 64 * 1024,
-    maxAttachments: 16,
-    maxAttachmentBytes: 16 * 1024 * 1024,
+    maxBodyBytes: MAX_BODY_BYTES,
+    maxAttachments: MAX_ATTACHMENTS,
+    maxAttachmentBytes: MAX_ATTACHMENT_BYTES,
   },
 } as const;
 
