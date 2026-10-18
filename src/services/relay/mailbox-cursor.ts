@@ -4,10 +4,15 @@
  * Cursors are versioned, HMAC-signed, and bound to the mailbox owner plus a
  * device id. They carry an explicit expiry so a stale reconnect recovers
  * through a bounded full resync rather than replaying unbounded history.
+ *
+ * This module is runtime-agnostic (Issue #317): it relies only on the Web
+ * Crypto API (`crypto.subtle`), `Uint8Array`, `TextEncoder`, and
+ * `TextDecoder` — never on `node:crypto` or the `Buffer` global — so it can be
+ * imported from shared/browser graphs as well as the Workers runtime.
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
-
 import { ApiError } from "@/server/api/errors";
+import { fromBase64, fromHex, toBase64, toHex } from "@/services/crypto/codec";
+import { constantTimeEqual } from "@/services/crypto/constant-time";
 
 import { SYNC_CURSOR_TTL_MS } from "./mailbox-sync-types";
 
@@ -23,23 +28,45 @@ interface MailboxCursorPayload {
 }
 
 function cursorSecret(): string {
-  return process.env.STEALTH_CURSOR_SECRET ?? "";
+  if (typeof process === "undefined") return "";
+  return process.env?.STEALTH_CURSOR_SECRET ?? "";
 }
 
-function sign(payload: string): string {
+function toBytes(value: string): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(new TextEncoder().encode(value));
+}
+
+/** HMAC-SHA256 over the UTF-8 payload using the Web Crypto API. */
+async function hmacSha256(secret: string, payload: string): Promise<Uint8Array<ArrayBuffer>> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    toBytes(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, toBytes(payload));
+  return new Uint8Array(signature);
+}
+
+async function sign(payload: string): Promise<string> {
   const secret = cursorSecret();
   if (!secret) {
     throw new ApiError(500, "internal_error", "Cursor signing secret is not configured");
   }
-  return createHmac("sha256", secret).update(payload).digest("hex");
+  return toHex(await hmacSha256(secret, payload));
 }
 
 function base64UrlEncode(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64url");
+  return toBase64(toBytes(value)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function base64UrlDecode(value: string): string {
-  return Buffer.from(value, "base64url").toString("utf8");
+  const base64 = value
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return new TextDecoder().decode(fromBase64(base64));
 }
 
 export interface EncodedMailboxCursor {
@@ -50,13 +77,13 @@ export interface EncodedMailboxCursor {
   expiresAt: number;
 }
 
-export function encodeMailboxCursor(
+export async function encodeMailboxCursor(
   actor: string,
   deviceId: string,
   seq: number,
   nowMs: number = Date.now(),
   ttlMs: number = SYNC_CURSOR_TTL_MS,
-): string {
+): Promise<string> {
   if (!Number.isSafeInteger(seq) || seq < 0) {
     throw new ApiError(500, "internal_error", "Mailbox cursor seq is invalid");
   }
@@ -69,16 +96,17 @@ export function encodeMailboxCursor(
     exp: nowMs + ttlMs,
   };
   const raw = JSON.stringify(payload);
-  return `${CURSOR_VERSION}.${sign(raw)}.${base64UrlEncode(raw)}`;
+  return `${CURSOR_VERSION}.${await sign(raw)}.${base64UrlEncode(raw)}`;
 }
 
-export function decodeMailboxCursor(
+export async function decodeMailboxCursor(
   cursor: string,
   actor: string,
   deviceId: string,
   nowMs: number = Date.now(),
-): EncodedMailboxCursor {
-  if (!cursorSecret()) {
+): Promise<EncodedMailboxCursor> {
+  const secret = cursorSecret();
+  if (!secret) {
     throw new ApiError(500, "internal_error", "Cursor signing secret is not configured");
   }
 
@@ -99,10 +127,14 @@ export function decodeMailboxCursor(
     throw new ApiError(400, "bad_request", "Invalid mailbox sync cursor");
   }
 
-  const expected = sign(raw);
-  const provided = Buffer.from(signature);
-  const expectedBuf = Buffer.from(expected);
-  if (provided.length !== expectedBuf.length || !timingSafeEqual(provided, expectedBuf)) {
+  const expected = await hmacSha256(secret, raw);
+  let provided: Uint8Array;
+  try {
+    provided = fromHex(signature);
+  } catch {
+    throw new ApiError(400, "bad_request", "Tampered mailbox sync cursor rejected");
+  }
+  if (!constantTimeEqual(provided, expected)) {
     throw new ApiError(400, "bad_request", "Tampered mailbox sync cursor rejected");
   }
 

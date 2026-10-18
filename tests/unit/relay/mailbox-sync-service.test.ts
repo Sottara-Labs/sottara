@@ -138,7 +138,7 @@ describe("MailboxSyncService domain", () => {
       occurredAt: "2026-08-19T00:00:00.000Z",
       ciphertext: "aGVsbG8=",
     });
-    const expired = encodeMailboxCursor(owner, deviceId, 1, 1_000, 50);
+    const expired = await encodeMailboxCursor(owner, deviceId, 1, 1_000, 50);
     await expect(service.sync(owner, { deviceId, cursor: expired })).rejects.toMatchObject({
       code: "cursor_expired",
       status: 410,
@@ -160,7 +160,7 @@ describe("MailboxSyncService domain", () => {
         ciphertext: "aGVsbG8=",
       });
     }
-    const stale = encodeMailboxCursor(owner, deviceId, 1, 1_000);
+    const stale = await encodeMailboxCursor(owner, deviceId, 1, 1_000);
     await expect(service.sync(owner, { deviceId, cursor: stale })).rejects.toBeInstanceOf(ApiError);
   });
 

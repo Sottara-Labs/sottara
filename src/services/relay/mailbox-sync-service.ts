@@ -71,7 +71,12 @@ export class MailboxSyncService {
     let mode: MailboxSyncResult["mode"] = "initial";
 
     if (parsed.data.cursor) {
-      const decoded = decodeMailboxCursor(parsed.data.cursor, owner, parsed.data.deviceId, nowMs);
+      const decoded = await decodeMailboxCursor(
+        parsed.data.cursor,
+        owner,
+        parsed.data.deviceId,
+        nowMs,
+      );
       const listing = await this.persistence.listEvents(owner, decoded.seq, 1);
       if (listing.minSeq > 0 && decoded.seq + 1 < listing.minSeq) {
         throw new ApiError(
@@ -86,7 +91,7 @@ export class MailboxSyncService {
 
     const page = await this.persistence.listEvents(owner, afterSeq, limit);
     const acknowledgedSeq = page.events.at(-1)?.seq ?? afterSeq;
-    const cursor = encodeMailboxCursor(owner, parsed.data.deviceId, acknowledgedSeq, nowMs);
+    const cursor = await encodeMailboxCursor(owner, parsed.data.deviceId, acknowledgedSeq, nowMs);
 
     await this.persistence.saveCheckpoint({
       owner,
