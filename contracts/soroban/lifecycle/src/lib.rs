@@ -179,6 +179,7 @@ impl LifecycleContract {
             return Err(Error::AlreadyInitialized);
         }
 
+        policies.require_auth();
         env.storage().instance().set(
             &DataKey::Config,
             &LifecycleConfig {
@@ -1405,6 +1406,31 @@ mod auth_boundaries {
             &false,
         );
         assert!(matches!(result, Err(Err(_))));
+    }
+
+    #[test]
+    fn initialize_requires_deployer_auth() {
+        let env = Env::default();
+        let policies = Address::generate(&env);
+        let postage = Address::generate(&env);
+        let receipts = Address::generate(&env);
+        let lifecycle = env.register(LifecycleContract, ());
+        let client = LifecycleContractClient::new(&env, &lifecycle);
+
+        let attacker = Address::generate(&env);
+        env.mock_auths(&[MockAuth {
+            address: &attacker,
+            invoke: &MockAuthInvoke {
+                contract: &lifecycle,
+                fn_name: "initialize",
+                args: (policies.clone(), postage.clone(), receipts.clone()).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        let result = client.try_initialize(&policies, &postage, &receipts);
+        assert!(matches!(result, Err(Err(_))));
+        assert_eq!(client.try_config(), Err(Ok(Error::NotInitialized)));
     }
 
     #[test]
