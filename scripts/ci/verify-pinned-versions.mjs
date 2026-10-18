@@ -53,7 +53,7 @@ for (const [envKey, tvKey] of [
   ["OPTIC_VERSION", "optic"],
   ["WRANGLER_VERSION", "wrangler"],
 ]) {
-  const m = ciYml.match(new RegExp(`^\\s*${envKey}:\\s*"([^"]+)"`, "m"));
+  const m = ciYml.match(new RegExp(`^\\s*${envKey}:\\s*["']?([^"'\\r\\n]+)["']?`, "m"));
   if (!m) {
     problems.push(`- ci.yml is missing env ${envKey}`);
     continue;
