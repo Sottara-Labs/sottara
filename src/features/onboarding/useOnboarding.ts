@@ -68,9 +68,13 @@ export function useOnboarding(options: {
 
   const saveInFlightRef = useRef(false);
   const saveRequestedRef = useRef(false);
-  const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateDebounceRef = useRef(typeof setTimeout | null);
   const idempotencyKeyRef = useRef<string | null>(null);
   const lastSubmitPayloadRef = useRef<string | null>(null);
+  // Ordering guard for restores and abort handle for the in-flight request.
+  const restoreAbortRef = useRef<AbortController | null>(null);
+  const restoreRequestIdRef = useRef(0);
+  const isMountedRef = useRef(true);
 
   const applyProgress = useCallback((next: { step: OnboardingStep; draft: OnboardingDraft }) => {
     progressRef.current = next;
@@ -78,10 +82,22 @@ export function useOnboarding(options: {
   }, []);
 
   const restore = useCallback(async () => {
+    // Abort any previous in-flight restore and mark this one as the current request.
+    restoreAbortRef.current?.abort();
+    const controller = new AbortController();
+    restoreAbortRef.current = controller;
+    const requestId = ++restoreRequestIdRef.current;
+    const isCurrent = () =>
+      isMountedRef.current &&
+      requestId === restoreRequestIdRef.current &&
+      !controller.signal.aborted;
+
     setIsRestoring(true);
     setRestoreError(null);
     try {
-      const record = await fetchOnboardingDraft();
+      const record = await fetchOnboardingDraft(controller.signal);
+      // Discard superseded responses: a newer retry or an unmount wins.
+      if (!isCurrent()) return;
       if (record) {
         if (record.status === "completed") {
           setCompleted({
@@ -95,20 +111,27 @@ export function useOnboarding(options: {
         }
       }
     } catch {
+      // An aborted or superseded request must not surface as an error.
+      if (!isCurrent()) return;
       // A failed restore must not lose the flow: fall back to defaults and
       // let the user retry from the first unsaved step.
       setRestoreError("Could not load your saved progress. Starting fresh.");
     } finally {
-      setIsRestoring(false);
+      if (isCurrent()) setIsRestoring(false);
     }
   }, [applyProgress]);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void restore();
+    return () => {
+      isMountedRef.current = false;
+      restoreAbortRef.current?.abort();
+      restoreAbortRef.current = null;
+    };
   }, [restore]);
 
-  // Single-flight writer with trailing flush: every trigger either writes now
-  // or is covered by the next iteration, and the final state always lands.
+  // Single-flight writer with trailing flush: every trigger either writes now or is covered by the next iteration, and the final state always lands.
   const persist = useCallback(() => {
     saveRequestedRef.current = true;
     setSaveError(null);
@@ -151,7 +174,7 @@ export function useOnboarding(options: {
       if (completed) return;
       setDirection(1);
       applyProgress({
-        step: ONBOARDING_STEPS[
+        step: ONBOARDING_STEPS	[
           Math.min(ONBOARDING_STEPS.indexOf(progressRef.current.step) + 1, totalSteps - 1)
         ],
         draft: { ...progressRef.current.draft, ...patch },
