@@ -34,6 +34,8 @@ export interface PostageEscrowResult {
   success: boolean;
   postage?: ChainPostage;
   confirmation?: ChainConfirmation;
+  /** Transaction hash for submitted outcomes, including confirmation timeouts. */
+  txHash?: string;
   chainStatus: PostageChainStatus;
   retryClassification: RetryClassification;
   /** Bounded, redacted error string. Never contains secrets or XDR. */
@@ -445,13 +447,14 @@ export class PostageEscrowAdapter {
           chainStatus: "submitted",
           retryClassification: "safe",
           txHash,
-        } as any;
+        };
       }
 
       return {
         success: true,
         postage: confirmed.postage,
         confirmation: confirmed.confirmation,
+        txHash: confirmed.confirmation.txHash,
         chainStatus: "confirmed",
         retryClassification: "safe",
       };
