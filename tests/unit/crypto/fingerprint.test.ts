@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveEnvelopeFingerprint,
   checkReplay,
-  type ReplayStore,
+  InMemoryReplayStore,
 } from "../../../src/services/crypto/fingerprint";
 import { type SealedEnvelope } from "../../../src/services/crypto/envelope";
 
@@ -25,18 +25,6 @@ const validEnvelope: SealedEnvelope = {
   payload: validPayload,
   ciphertext: "SGVsbG8gV29ybGQ=", // valid base64
 };
-
-class InMemoryReplayStore implements ReplayStore {
-  private seen = new Set<string>();
-
-  has(fingerprint: string): boolean {
-    return this.seen.has(fingerprint);
-  }
-
-  add(fingerprint: string): void {
-    this.seen.add(fingerprint);
-  }
-}
 
 describe("Envelope Fingerprinting & Replay Detection", () => {
   describe("deriveEnvelopeFingerprint", () => {
@@ -139,13 +127,37 @@ describe("Envelope Fingerprinting & Replay Detection", () => {
       const store = new InMemoryReplayStore();
       const fp = await deriveEnvelopeFingerprint(validEnvelope);
 
-      // First check: should not be a replay, and should add to store
+      // First check: should not be a replay, and should claim the fingerprint
       const isReplay1 = await checkReplay(fp, store);
       expect(isReplay1).toBe(false);
 
       // Second check: should now be a replay
       const isReplay2 = await checkReplay(fp, store);
       expect(isReplay2).toBe(true);
+    });
+
+    it("accepts exactly one of two concurrent checks for the same fingerprint (#292)", async () => {
+      const store = new InMemoryReplayStore();
+      const fp = await deriveEnvelopeFingerprint(validEnvelope);
+
+      const results = await Promise.all([checkReplay(fp, store), checkReplay(fp, store)]);
+
+      expect(results.filter((isReplay) => isReplay === false)).toHaveLength(1);
+      expect(results.filter((isReplay) => isReplay === true)).toHaveLength(1);
+    });
+
+    it("sheds fingerprints older than the TTL (#292)", async () => {
+      let nowMs = 1_000;
+      const store = new InMemoryReplayStore({ ttlMs: 100, now: () => nowMs });
+      const fp = await deriveEnvelopeFingerprint(validEnvelope);
+
+      expect(await checkReplay(fp, store)).toBe(false);
+      expect(await checkReplay(fp, store)).toBe(true);
+      expect(store.size).toBe(1);
+
+      nowMs += 100; // TTL elapsed
+      expect(store.size).toBe(0);
+      expect(await checkReplay(fp, store)).toBe(false);
     });
   });
 });

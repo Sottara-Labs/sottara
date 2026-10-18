@@ -33,27 +33,85 @@ export async function deriveEnvelopeFingerprint(envelope: SealedEnvelope): Promi
 }
 
 /**
- * Simple interface for tracking seen fingerprints.
+ * Store for tracking seen fingerprints.
  * Decouples storage details (e.g. Memory, Redis, PostgreSQL) from primitive crypto code.
+ *
+ * The store exposes a single atomic `claim` operation instead of separate
+ * check-then-set calls: implementations must complete the test-and-set
+ * without yielding between the check and the write, so two concurrent
+ * callers cannot both observe "unseen" (issue #292).
  */
 export interface ReplayStore {
-  has(fingerprint: string): boolean | Promise<boolean>;
-  add(fingerprint: string): void | Promise<void>;
+  /**
+   * Atomically records `fingerprint` and reports whether it was already
+   * present. `true` means replay (someone else claimed it first); `false`
+   * means this call claimed it.
+   */
+  claim(fingerprint: string): boolean | Promise<boolean>;
+}
+
+/** How long a claimed fingerprint is remembered by default (dedup window). */
+export const DEFAULT_REPLAY_TTL_MS = 15 * 60_000;
+
+/** Options for {@link InMemoryReplayStore}. */
+export interface InMemoryReplayStoreOptions {
+  /** Entries older than this are shed. Defaults to {@link DEFAULT_REPLAY_TTL_MS}. */
+  ttlMs?: number;
+  /** Injectable clock (ms since epoch) for tests. Defaults to `Date.now`. */
+  now?: () => number;
+}
+
+/**
+ * In-memory replay store with a TTL. `claim` performs the test-and-set
+ * synchronously, so concurrent callers race on a single atomic step and
+ * exactly one is accepted. Entries older than the TTL are shed on every
+ * access, keeping the store bounded over the process lifetime.
+ */
+export class InMemoryReplayStore implements ReplayStore {
+  private readonly seen = new Map<string, number>();
+  private readonly ttlMs: number;
+  private readonly now: () => number;
+
+  constructor(options: InMemoryReplayStoreOptions = {}) {
+    this.ttlMs = options.ttlMs ?? DEFAULT_REPLAY_TTL_MS;
+    this.now = options.now ?? Date.now;
+  }
+
+  claim(fingerprint: string): boolean {
+    const nowMs = this.now();
+    this.prune(nowMs);
+    if (this.seen.has(fingerprint)) {
+      return true;
+    }
+    this.seen.set(fingerprint, nowMs);
+    return false;
+  }
+
+  /** Number of live (unexpired) entries. */
+  get size(): number {
+    this.prune(this.now());
+    return this.seen.size;
+  }
+
+  private prune(nowMs: number): void {
+    for (const [fingerprint, claimedAt] of this.seen) {
+      if (nowMs - claimedAt >= this.ttlMs) {
+        this.seen.delete(fingerprint);
+      }
+    }
+  }
 }
 
 /**
  * Checks if a given envelope fingerprint is a replay (already processed).
- * If not a replay, adds it to the store.
+ * If not a replay, claims it in the store.
  *
  * @param fingerprint The envelope fingerprint to check.
  * @param store The storage driver implementing ReplayStore.
  * @returns A promise resolving to true if replay detected (fingerprint seen), false otherwise.
  */
 export async function checkReplay(fingerprint: string, store: ReplayStore): Promise<boolean> {
-  const isSeen = await store.has(fingerprint);
-  if (isSeen) {
-    return true;
-  }
-  await store.add(fingerprint);
-  return false;
+  // A single atomic claim: implementations must not yield between the check
+  // and the write, or concurrent callers could both be accepted.
+  return await store.claim(fingerprint);
 }
