@@ -123,4 +123,66 @@ describe("BETA-005: Notification Audit Trail", () => {
     expect(alphaEvents).toHaveLength(1);
     expect(alphaEvents[0].safeTargetReference).toBe("target_target_alpha");
   });
+
+  it("never produces a hash_-prefixed fallback recordHash and enforces 64-char hex SHA-256", async () => {
+    const event = await auditTrail.recordEvent({
+      eventType: "delivery.succeeded",
+      transport: "smtp",
+      safeTargetReference: "ref_audit_hash",
+      durationMs: 25,
+    });
+
+    expect(event.recordHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(event.recordHash.startsWith("hash_")).toBe(false);
+  });
+
+  it("refuses to record audit events and fails closed when crypto.subtle is unavailable", async () => {
+    const originalSubtle = globalThis.crypto.subtle;
+    try {
+      Object.defineProperty(globalThis.crypto, "subtle", {
+        value: undefined,
+        configurable: true,
+      });
+
+      await expect(
+        auditTrail.recordEvent({
+          eventType: "delivery.dispatched",
+          transport: "smtp",
+          safeTargetReference: "ref_no_crypto",
+          durationMs: 10,
+        }),
+      ).rejects.toThrow("WebCrypto (crypto.subtle) is required");
+    } finally {
+      Object.defineProperty(globalThis.crypto, "subtle", {
+        value: originalSubtle,
+        configurable: true,
+      });
+    }
+  });
+
+  it("refuses to verify chain integrity when crypto.subtle is unavailable", async () => {
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_verify",
+      durationMs: 10,
+    });
+
+    const originalSubtle = globalThis.crypto.subtle;
+    try {
+      Object.defineProperty(globalThis.crypto, "subtle", {
+        value: undefined,
+        configurable: true,
+      });
+
+      await expect(auditTrail.verifyChainIntegrity()).rejects.toThrow(
+        "WebCrypto (crypto.subtle) is required",
+      );
+    } finally {
+      Object.defineProperty(globalThis.crypto, "subtle", {
+        value: originalSubtle,
+        configurable: true,
+      });
+    }
+  });
 });
