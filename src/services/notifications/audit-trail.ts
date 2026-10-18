@@ -33,8 +33,11 @@ export interface DeliveryAuditEvent {
   readonly metadata?: Record<string, string | number | boolean>;
 }
 
+export const GENESIS_AUDIT_HASH = "GENESIS_AUDIT_BLOCK_00000000000000000000000000000000";
+
 export interface AuditTrailSummary {
   readonly totalEvents: number;
+  readonly droppedEvents: number;
   readonly successfulDeliveries: number;
   readonly failedDeliveries: number;
   readonly averageLatencyMs: number;
@@ -46,9 +49,14 @@ export interface AuditTrailSummary {
 export class NotificationAuditTrail {
   private readonly events: DeliveryAuditEvent[] = [];
   private currentSequence = 0;
-  private lastHash = "GENESIS_AUDIT_BLOCK_00000000000000000000000000000000";
+  private droppedEvents = 0;
+  private lastHash = GENESIS_AUDIT_HASH;
 
   constructor(private readonly maxBufferSize = 5000) {}
+
+  get droppedEventsCount(): number {
+    return this.droppedEvents;
+  }
 
   /**
    * Records a notification dispatch attempt or completion with cryptographic chaining.
@@ -98,6 +106,7 @@ export class NotificationAuditTrail {
 
     if (this.events.length >= this.maxBufferSize) {
       this.events.shift();
+      this.droppedEvents++;
     }
     this.events.push(event);
 
@@ -106,16 +115,34 @@ export class NotificationAuditTrail {
 
   /**
    * Validates the cryptographic integrity of the audit chain from start to end.
+   * Checks sequenceId continuity and genesis hash linkage.
    */
   async verifyChainIntegrity(): Promise<boolean> {
     if (this.events.length === 0) return true;
 
+    // Check genesis continuity when no events have been dropped
+    if (this.droppedEvents === 0) {
+      const firstEvent = this.events[0];
+      if (firstEvent.sequenceId !== 1 || firstEvent.previousHash !== GENESIS_AUDIT_HASH) {
+        return false;
+      }
+    } else {
+      // If events were dropped, the first buffered event sequenceId must match droppedEvents + 1
+      if (this.events[0].sequenceId !== this.droppedEvents + 1) {
+        return false;
+      }
+    }
+
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
-      const prevHash = i === 0 ? event.previousHash : this.events[i - 1].recordHash;
-
-      if (event.previousHash !== prevHash) {
-        return false;
+      if (i > 0) {
+        const prevEvent = this.events[i - 1];
+        if (event.sequenceId !== prevEvent.sequenceId + 1) {
+          return false;
+        }
+        if (event.previousHash !== prevEvent.recordHash) {
+          return false;
+        }
       }
 
       const payloadToHash = JSON.stringify({
@@ -159,7 +186,8 @@ export class NotificationAuditTrail {
     const isChainValid = await this.verifyChainIntegrity();
 
     return {
-      totalEvents: this.events.length,
+      totalEvents: this.events.length + this.droppedEvents,
+      droppedEvents: this.droppedEvents,
       successfulDeliveries: successCount,
       failedDeliveries: failCount,
       averageLatencyMs: this.events.length > 0 ? Math.round(totalLatency / this.events.length) : 0,
@@ -182,7 +210,8 @@ export class NotificationAuditTrail {
   clear(): void {
     this.events.length = 0;
     this.currentSequence = 0;
-    this.lastHash = "GENESIS_AUDIT_BLOCK_00000000000000000000000000000000";
+    this.droppedEvents = 0;
+    this.lastHash = GENESIS_AUDIT_HASH;
   }
 
   get allEvents(): readonly DeliveryAuditEvent[] {
@@ -202,13 +231,8 @@ async function computeSha256Digest(input: string): Promise<string> {
       .join("");
   }
 
-  // Fallback FNV-1a / polynomial hash for pure JS test runs
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `hash_${(h >>> 0).toString(16).padStart(8, "0")}`;
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(input).digest("hex");
 }
 
 export const globalNotificationAuditTrail = new NotificationAuditTrail();
