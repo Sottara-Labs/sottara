@@ -40,7 +40,6 @@ export function deriveSecretScanStatus({
 
 export function deriveBetaSecurityStatus({
   cryptoOutcome,
-  securityOutcome,
   cryptoEvidenceOutcome = "success",
   securityRegressionOutcome = "success",
   securityRoutesOutcome = "success",
