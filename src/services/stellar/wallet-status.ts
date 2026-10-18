@@ -1,6 +1,6 @@
 import type { ApiRepository } from "../../server/api/repository";
 import { ApiError } from "../../server/api/errors";
-import type { BetaRuntimeConfig } from "../../config/schema";
+import type { BetaRuntimeConfig, StellarNetwork } from "../../config/schema";
 import { loadRuntimeConfig } from "../../config";
 import type { FundingOperation, ManagedWalletRecord } from "../../server/api/domain";
 import { fundingOperationIdForUser } from "./funding";
@@ -18,7 +18,7 @@ export type WalletStatusFreshness = "fresh" | "stale" | "unavailable";
  */
 export interface PublicWalletStatus {
   address: string;
-  network: "testnet";
+  network: StellarNetwork;
   networkPassphrase: string;
   balanceXlm: string | null;
   activation: WalletActivationState;
@@ -176,7 +176,7 @@ export async function readPublicWalletStatus(input: {
   if (cacheFresh && cached) {
     return assertPublicWalletStatus({
       address: wallet.address,
-      network: "testnet",
+      network: config.network.stellarNetwork,
       networkPassphrase: config.network.networkPassphrase,
       balanceXlm: cached.nativeBalanceXlm,
       activation,
@@ -196,7 +196,7 @@ export async function readPublicWalletStatus(input: {
     await cache.set(wallet.address, snapshot);
     return assertPublicWalletStatus({
       address: wallet.address,
-      network: "testnet",
+      network: config.network.stellarNetwork,
       networkPassphrase: config.network.networkPassphrase,
       balanceXlm: snapshot.nativeBalanceXlm,
       activation,
@@ -211,7 +211,7 @@ export async function readPublicWalletStatus(input: {
     if (cached?.available) {
       return assertPublicWalletStatus({
         address: wallet.address,
-        network: "testnet",
+        network: config.network.stellarNetwork,
         networkPassphrase: config.network.networkPassphrase,
         balanceXlm: cached.nativeBalanceXlm,
         activation,
@@ -222,7 +222,7 @@ export async function readPublicWalletStatus(input: {
     }
     return assertPublicWalletStatus({
       address: wallet.address,
-      network: "testnet",
+      network: config.network.stellarNetwork,
       networkPassphrase: config.network.networkPassphrase,
       balanceXlm: null,
       activation,

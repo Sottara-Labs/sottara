@@ -33,6 +33,16 @@ const testConfig = {
   },
 } as BetaRuntimeConfig;
 
+const mainnetConfig = {
+  profile: "production",
+  network: {
+    stellarNetwork: "mainnet",
+    networkPassphrase: "Public Global Stellar Network ; September 2015",
+    horizonUrl: "https://horizon.stellar.org",
+    sorobanRpcUrl: "https://soroban.stellar.org",
+  },
+} as BetaRuntimeConfig;
+
 function sampleUser(userId: string, address: string): User {
   const now = "2026-01-01T00:00:00.000Z";
   return {
@@ -149,6 +159,57 @@ describe("readPublicWalletStatus (BETA-019)", () => {
     expect(secretKeysOf(status)).toEqual([]);
     expect(JSON.stringify(status)).not.toMatch(/cipher|nonce|tag|encryptedSecret|S[A-Z0-9]{55}/);
     expect(assertPublicWalletStatus(status)).toEqual(status);
+  });
+
+  it("reports the configured network on the live branch for testnet and mainnet", async () => {
+    const repository = new MemoryApiRepository();
+    await seedOwner(repository, "funded");
+
+    const testnet = await readPublicWalletStatus({
+      repository,
+      actorAddress: OWNER,
+      config: testConfig,
+      horizon: fakeHorizon({ nativeBalanceXlm: "1.0000000" }),
+      cache: new MemoryWalletStatusCache(),
+    });
+    expect(testnet.network).toBe("testnet");
+    expect(testnet.network).toBe(testConfig.network.stellarNetwork);
+
+    const mainnet = await readPublicWalletStatus({
+      repository,
+      actorAddress: OWNER,
+      config: mainnetConfig,
+      horizon: fakeHorizon({ nativeBalanceXlm: "1.0000000" }),
+      cache: new MemoryWalletStatusCache(),
+    });
+    expect(mainnet.network).toBe("mainnet");
+    expect(mainnet.network).toBe(mainnetConfig.network.stellarNetwork);
+    expect(mainnet.networkPassphrase).toBe(mainnetConfig.network.networkPassphrase);
+  });
+
+  it("reports the configured network on a fresh cache hit", async () => {
+    const repository = new MemoryApiRepository();
+    await seedOwner(repository, "funded");
+    const cache = new MemoryWalletStatusCache();
+    await cache.set(WALLET, {
+      nativeBalanceXlm: "3.0000000",
+      fetchedAt: "2026-08-18T11:59:30.000Z",
+      available: true,
+    });
+
+    const status = await readPublicWalletStatus({
+      repository,
+      actorAddress: OWNER,
+      config: mainnetConfig,
+      horizon: fakeHorizon({ nativeBalanceXlm: "1.0000000" }),
+      cache,
+      ttlMs: 60_000,
+      now: new Date("2026-08-18T12:00:00.000Z"),
+    });
+
+    expect(status.network).toBe("mainnet");
+    expect(status.network).toBe(mainnetConfig.network.stellarNetwork);
+    expect(status.freshness).toBe("fresh");
   });
 
   it("reports activation pending when the managed wallet is not funded", async () => {
