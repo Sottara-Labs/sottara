@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Keypair } from "@stellar/stellar-sdk";
 
 import {
   openEnvelope,
@@ -7,6 +8,11 @@ import {
 } from "../../../src/services/crypto/open-envelope";
 import { createCommitment } from "../../../src/services/crypto/commitment";
 import { encodeAad } from "../../../src/services/crypto/aad";
+import { canonicalizePayload, type EnvelopePayload } from "../../../src/services/crypto/envelope";
+import {
+  ENVELOPE_SIGNATURE_DOMAIN,
+  type EnvelopeSignature,
+} from "../../../src/services/crypto/signature";
 
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -245,5 +251,72 @@ describe("openEnvelope decryption (#1685)", () => {
     expect(opened.provenance.recipient).toBe("GABC");
     expect(opened.provenance.digest).toHaveLength(64);
     expect(opened.provenance.contentCommitment).toBe(env.payload.content_commitment);
+  });
+});
+
+/** Build a sealed envelope whose payload carries a valid Ed25519 sender signature. */
+async function buildSignedEnvelope(
+  body: string,
+  key: CryptoKey,
+  senderKp: Keypair,
+  recipient: string,
+) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode(body);
+  const sender = senderKp.publicKey();
+  const timestamp = "2026-07-23T12:00:00.000Z";
+  const aad = encodeAad({ version: "v1", sender, recipient, timestamp, attachments: [] });
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: aad as BufferSource },
+      key,
+      plaintext,
+    ),
+  );
+  const tag = ct.slice(ct.length - 16);
+  const payload: EnvelopePayload = {
+    version: "v1",
+    sender,
+    recipient,
+    timestamp,
+    encryption_metadata: {
+      algorithm: "AES-256-GCM",
+      nonce: toHex(iv),
+      mac: toHex(tag),
+    },
+    content_commitment: await createCommitment(ct),
+    attachments: [],
+  };
+  const canonical = canonicalizePayload(payload);
+  const signature: EnvelopeSignature = {
+    scheme: "Ed25519",
+    signerAddress: sender,
+    value: toHex(new Uint8Array(senderKp.sign(Buffer.from(ENVELOPE_SIGNATURE_DOMAIN + canonical)))),
+  };
+  return { payload, ciphertext: toBase64(ct), signature };
+}
+
+describe("openEnvelope sender provenance (#284)", () => {
+  it("does not treat a G-prefixed sender without a signature as verified", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const env = await buildEnvelope("unauthenticated mail", key, "GABC");
+    const opened = await openEnvelope(env, keyProviderFor(key));
+    expect(opened.provenance.signatureVerified).toBe(false);
+    expect(opened.provenance.senderVerified).toBe(false);
+  });
+
+  it("reports the sender as verified when the Ed25519 signature checks out", async () => {
+    const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
+      "encrypt",
+      "decrypt",
+    ]);
+    const senderKp = Keypair.random();
+    const env = await buildSignedEnvelope("authenticated mail", key, senderKp, "GABC");
+    const opened = await openEnvelope(env, keyProviderFor(key));
+    expect(opened.provenance.signatureVerified).toBe(true);
+    expect(opened.provenance.senderVerified).toBe(true);
   });
 });
