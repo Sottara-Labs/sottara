@@ -217,7 +217,9 @@ export class DirectoryRecipientKeyResolver implements RecipientKeyResolver, Hist
           pubKeyBytes = fromBase64(rawKey.publicKey);
         }
       } catch {
-        pubKeyBytes = new TextEncoder().encode(rawKey.publicKey);
+        throw new ResolverError(
+          `Key directory entry for recipient ${recipient} is neither valid hex nor base64`,
+        );
       }
     } else {
       pubKeyBytes = rawKey.publicKey;

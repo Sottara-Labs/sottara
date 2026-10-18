@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DirectoryRecipientKeyResolver,
   resolveTrustedKey,
   ResolverError,
   validateResolvedKey,
@@ -66,5 +67,41 @@ describe("recipient key resolution (#1712)", () => {
       resolve: async () => makeKey({ revoked: true }),
     };
     await expect(resolveTrustedKey(untrusted, "GABC")).rejects.toBeInstanceOf(ResolverError);
+  });
+});
+
+describe("directory key material decoding (#291)", () => {
+  const directoryKey = (publicKey: unknown) => ({
+    currentKeys: {
+      encryption: {
+        publicKey,
+        keyId: "k1",
+        notBefore: "2020-01-01T00:00:00Z",
+        notAfter: "2099-01-01T00:00:00Z",
+        status: "active",
+        version: 1,
+      },
+    },
+    historicalKeys: [],
+    allKeys: [],
+  });
+
+  const resolverWith = (publicKey: unknown) =>
+    new DirectoryRecipientKeyResolver(async () => directoryKey(publicKey));
+
+  it("accepts a hex-encoded directory key", async () => {
+    const key = await resolverWith("ab".repeat(32)).resolve("GABC");
+    expect(key.publicKey).toEqual(new Uint8Array(32).fill(0xab));
+  });
+
+  it("accepts a base64-encoded directory key", async () => {
+    const bytes = new Uint8Array(32).fill(0xab);
+    const base64 = btoa(String.fromCharCode(...bytes));
+    const key = await resolverWith(base64).resolve("GABC");
+    expect(key.publicKey).toEqual(bytes);
+  });
+
+  it("fails closed when the directory key is neither hex nor base64", async () => {
+    await expect(resolverWith("hello world").resolve("GABC")).rejects.toBeInstanceOf(ResolverError);
   });
 });
