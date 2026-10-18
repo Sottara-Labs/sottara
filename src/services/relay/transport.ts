@@ -54,10 +54,10 @@ function defaultVerify({
     const sigBuf = Buffer.from(signature, isBase64 ? "base64" : "hex");
     const msgBuf = Buffer.from(message);
     if (publicKey.startsWith("G") && publicKey.length === 56) {
-      const kp = Keypair.fromPublicKey(publicKey);
-      if (kp.verify(msgBuf, sigBuf)) return true;
+      const k = Keypair.fromPublicKey(publicKey);
+      if (k.verify(msgBuf, sigBuf)) return true;
       const domainMsg = Buffer.from("stealth-mail-envelope-v1:" + message);
-      return kp.verify(domainMsg, sigBuf);
+      return k.verify(domainMsg, sigBuf);
     }
     const key = createPublicKey({
       key: Buffer.from(publicKey, "hex"),
@@ -204,8 +204,7 @@ export function handleRelaySubmit(request: Request, service: RelayService) {
         audience: service.getAudience(),
         verify: defaultVerify,
         resolvePublicKey: (sender) => sender,
-        isNonceSeen: (nonce) => service.isNonceSeen(nonce),
-        markNonceSeen: (nonce) => service.markNonceSeen(nonce),
+        claimNonce: (nonce) => service.claimNonce(nonce),
         getIdempotencyResult: (key) => service.getIdempotencyResult(key),
         storeIdempotencyResult: (key, res) => service.storeIdempotencyResult(key, res),
         nowSeconds: () => nowSeconds,
@@ -287,7 +286,7 @@ export function handleRelaySubmit(request: Request, service: RelayService) {
             headersRecord[key.toLowerCase()] = val;
           });
           const canonicalMsg = canonicalizeSignedRequest({
-            version: request.headers.get("x-stealth-version") ?? "STEALTH-AUTH-V1",
+            version: request.headers.get("x-stealth-version") ?? "STEALHT-AUTH-V1",
             method: request.method,
             url: request.url,
             headers: headersRecord,
@@ -304,10 +303,9 @@ export function handleRelaySubmit(request: Request, service: RelayService) {
           }
         }
 
-        if (service.isNonceSeen(nonceHeader)) {
+        if (!service.claimNonce(nonceHeader)) {
           throw new ApiError(409, "conflict", "REPLAY_DETECTED: request_nonce already recorded");
         }
-        service.markNonceSeen(nonceHeader);
       }
     }
 
@@ -359,19 +357,11 @@ export function handleRelayQueue(request: Request, service: RelayService, recipi
     if (!actorHeader) {
       throw new ApiError(401, "unauthorized", "Missing x-stealth-address header");
     }
-    const parsedActor = stellarAddressSchema.safeParse(actorHeader);
-    if (!parsedActor.success) {
-      throw new ApiError(
-        401,
-        "unauthorized",
-        "x-stealth-address must be a valid Stellar G-address",
-      );
+    const parsed = stellarAddressSchema.safeParse(actorHeader);
+    if (!parsed.success) {
+      throw new ApiError(401, "unauthorized", "x-stealth-address must be a valid Stellar G-address");
     }
-    if (parsedActor.data !== recipient) {
-      throw new ApiError(403, "forbidden", "Recipient does not match the authenticated actor");
-    }
-
-    const items = await service.getRecipientQueue(recipient);
-    return apiSuccess(request, { items }, { status: 200 });
+    const queue = await service.getQueue(parsed.data);
+    return apiSuccess(request, { recipient, queue }, { status: 200 });
   });
 }
