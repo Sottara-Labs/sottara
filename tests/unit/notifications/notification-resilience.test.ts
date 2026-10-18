@@ -61,9 +61,9 @@ describe("BETA-005: Notification Resilience & Circuit Breaker", () => {
       dlq.enqueue({
         id: "entry-1",
         messageSummary: {
-          to: "user@example.com",
+          recipientDomain: "example.com",
+          safeTargetReference: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
           purpose: "email_verification",
-          safeTargetReference: "ref-1",
         },
         failedAttempts: 3,
         lastError: "SMTP connection refused",
@@ -75,6 +75,10 @@ describe("BETA-005: Notification Resilience & Circuit Breaker", () => {
       expect(dlq.size).toBe(1);
       const retrieved = dlq.get("entry-1");
       expect(retrieved?.lastError).toBe("SMTP connection refused");
+      expect((retrieved?.messageSummary as any).to).toBeUndefined();
+      expect(retrieved?.messageSummary.recipientDomain).toBe("example.com");
+      expect(retrieved?.messageSummary.safeTargetReference).toMatch(/^[a-f0-9]{64}$/);
+      expect(JSON.stringify(retrieved?.messageSummary)).not.toContain("@");
       expect(dlq.remove("entry-1")).toBe(true);
       expect(dlq.size).toBe(0);
     });
@@ -172,6 +176,59 @@ describe("BETA-005: Notification Resilience & Circuit Breaker", () => {
       expect(receipt.accepted).toBe(false);
       expect(receipt.reasonClass).toBe("max_retries_exceeded");
       expect(resilientService.dlq.size).toBe(1);
+
+      const entries = resilientService.dlq.getAll();
+      expect(entries).toHaveLength(1);
+      const entry = entries[0];
+      expect((entry.messageSummary as any).to).toBeUndefined();
+      expect(entry.messageSummary.recipientDomain).toBe("stealth.mail");
+      expect(entry.messageSummary.safeTargetReference).toMatch(/^[a-f0-9]{64}$/);
+      expect(JSON.stringify(entry.messageSummary)).not.toContain("@");
+      expect(JSON.stringify(entry.messageSummary)).not.toContain("charlie");
+    });
+
+    it("ensures circuit breaker DLQ entry contains no local-part or @ and safeTargetReference is a digest", async () => {
+      const mockAdapter: NotificationAdapter = {
+        transport: "smtp",
+        deliverVerificationEmail: vi.fn().mockRejectedValue(new Error("Down")),
+      };
+
+      const resilientService = new ResilientNotificationDeliveryService(
+        mockAdapter,
+        { maxRetries: 0, initialDelayMs: 1, maxDelayMs: 1, backoffFactor: 1 },
+        { failureThreshold: 1, resetTimeoutMs: 60_000, halfOpenMaxTrials: 1 },
+      );
+
+      // First call trips circuit breaker to open
+      await resilientService.deliverVerificationEmail({
+        to: "first@stealth.mail",
+        purpose: "email_verification",
+        verificationUrl: "https://stealth.mail/verify?token=1",
+        expiresAt: new Date(Date.now() + 3600000),
+      });
+
+      expect(resilientService.circuitState).toBe("open");
+
+      // Second call hits open circuit breaker and enqueues to DLQ immediately
+      const secondReceipt = await resilientService.deliverVerificationEmail({
+        to: "sensitive.user@private.domain.com",
+        purpose: "password_reset",
+        verificationUrl: "https://stealth.mail/verify?token=2",
+        expiresAt: new Date(Date.now() + 3600000),
+      });
+
+      expect(secondReceipt.accepted).toBe(false);
+      expect(secondReceipt.reasonClass).toBe("circuit_breaker_open");
+
+      const entries = resilientService.dlq.getAll();
+      expect(entries.length).toBeGreaterThanOrEqual(2);
+      const cbEntry = entries[entries.length - 1];
+
+      expect((cbEntry.messageSummary as any).to).toBeUndefined();
+      expect(cbEntry.messageSummary.recipientDomain).toBe("private.domain.com");
+      expect(cbEntry.messageSummary.safeTargetReference).toMatch(/^[a-f0-9]{64}$/);
+      expect(JSON.stringify(cbEntry.messageSummary)).not.toContain("@");
+      expect(JSON.stringify(cbEntry.messageSummary)).not.toContain("sensitive.user");
     });
   });
 });
