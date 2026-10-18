@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canTransitionDeliveryState,
   classifySmtpReplyCode,
+  DELIVERY_REASON_CLASSES,
 } from "../../../src/services/notifications/delivery-status";
 import {
   containsSensitiveNotificationMaterial,
@@ -13,6 +14,7 @@ import { VerificationMailQueue } from "../../../src/services/notifications/queue
 import {
   InviteFallbackNotificationAdapter,
   OrchestratedNotificationAdapter,
+  safeDeliveryFailureClass,
 } from "../../../src/services/notifications/orchestrator";
 import { SinkNotificationAdapter } from "../../../src/services/notifications/sink";
 import { SmtpError } from "../../../src/services/notifications/smtp";
@@ -257,5 +259,61 @@ describe("BETA-091: notification health", () => {
       probe: async () => ({ status: "ok", detail: "banner_ok" }),
     });
     expect(report.transport).toBe("degraded");
+  });
+});
+
+describe("BETA-091: safeDeliveryFailureClass reason classification", () => {
+  it("returns classified reasonClass for coded SmtpError", () => {
+    const error550 = new SmtpError("mailbox unavailable", { replyCode: 550 });
+    const reason550 = safeDeliveryFailureClass(error550);
+    expect(reason550).toBe("hard_bounce");
+    expect(DELIVERY_REASON_CLASSES).toContain(reason550);
+
+    const error451 = new SmtpError("local error in processing", { replyCode: 451 });
+    const reason451 = safeDeliveryFailureClass(error451);
+    expect(reason451).toBe("transient_mailbox");
+    expect(DELIVERY_REASON_CLASSES).toContain(reason451);
+  });
+
+  it("produces 'unknown' for TypeError and non-SMTP errors", () => {
+    const typeError = new TypeError("Cannot read properties of undefined (reading 'token')");
+    const reason = safeDeliveryFailureClass(typeError);
+    expect(reason).toBe("unknown");
+    expect(DELIVERY_REASON_CLASSES).toContain(reason);
+
+    const genericError = new Error("connection reset by peer");
+    const genericReason = safeDeliveryFailureClass(genericError);
+    expect(genericReason).toBe("unknown");
+    expect(DELIVERY_REASON_CLASSES).toContain(genericReason);
+
+    const stringError = "unexpected internal failure: token=super_secret_value";
+    const stringReason = safeDeliveryFailureClass(stringError);
+    expect(stringReason).toBe("unknown");
+    expect(DELIVERY_REASON_CLASSES).toContain(stringReason);
+  });
+
+  it("asserts the return value is always a member of DELIVERY_REASON_CLASSES", () => {
+    const testCases: unknown[] = [
+      new TypeError("bad type"),
+      new RangeError("out of range"),
+      new Error("something broke"),
+      new SmtpError("permanent reject", { replyCode: 500 }),
+      new SmtpError("temporary deferral", { replyCode: 421 }),
+      new SmtpError("accepted", { replyCode: 250 }),
+      new SmtpError("unknown reply", { replyCode: 999 }),
+      null,
+      undefined,
+      {},
+      "string error with secret token=abc123secret",
+      42,
+    ];
+
+    for (const testCase of testCases) {
+      const result = safeDeliveryFailureClass(testCase);
+      expect(DELIVERY_REASON_CLASSES).toContain(result);
+      // Ensure no free-form text or strings not in the enum
+      expect(typeof result).toBe("string");
+      expect(result.length).toBeLessThanOrEqual(30);
+    }
   });
 });
