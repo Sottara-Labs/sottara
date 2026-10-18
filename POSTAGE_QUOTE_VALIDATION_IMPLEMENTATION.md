@@ -2,7 +2,7 @@
 
 ## Task Overview
 
-**Objective**: Improve `src/routes/api/v1/postage/quote.ts` by addressing reliability and security gaps in input validation.
+**Objective**: Improve the postage quote endpoint by addressing reliability and security gaps in input validation.
 
 **Problem**: Postage quote requests needed explicit validation for missing, malformed, or oversized message identifiers (Stellar addresses) to prevent ambiguous downstream behavior.
 
@@ -15,16 +15,27 @@
 **Implementation**:
 
 - Invalid Stellar addresses trigger Zod validation errors
-- `normalizeApiError()` converts Zod errors to HTTP 422 `validation_error`
+- `statusCodeFromError()` in `src/server/api/errors.ts` maps the validation failure to HTTP 422 `validation_error`
 - Error code is stable and consistent across all validation failures
 - Field-specific error details included in response
 
 **Evidence**:
 
 ```typescript
-// From errors.ts normalizeApiError()
-if (error instanceof ZodError) {
-  return new ApiError(422, "validation_error", "Request validation failed", error.flatten());
+// From src/server/api/errors.ts
+// The validation branch of normalizeApiError() builds the ApiError with
+// normalizeValidationError(error), which produces the field-level detail.
+export function normalizeApiError(error: unknown): ApiError {
+  if (error instanceof ZodError) {
+    return new ApiError(
+      422,
+      "validation_error",
+      "Request validation failed",
+      normalizeValidationError(error),
+    );
+  }
+  // ...
+  return new ApiError(500, "internal_error", "Internal server error");
 }
 ```
 
@@ -61,7 +72,7 @@ if (error instanceof ZodError) {
 
 3. **Oversized**:
    - 57 characters (one above boundary)
-   - 100+ characters
+   - 100+ haracters
    - 1,000,000+ characters (stress test)
 
 4. **Type Safety**:
@@ -79,8 +90,8 @@ if (error instanceof ZodError) {
 
 **Test Files**:
 
-- `tests/unit/api/postage-quote-validation.test.ts` (70+ cases)
-- `tests/unit/api/postage-quote-endpoint-validation.test.ts` (50+ cases)
+-  tests/unit/api/postage-quote-validation.test.ts` (70+ instances)
+-  tests/unit/api/postage-quote-endpoint-validation.test.ts` (50+ instances)
 
 ### ✅ Valid requests keep the existing response shape
 
@@ -118,14 +129,14 @@ if (error instanceof ZodError) {
 
 ### Files Created
 
-1. **`tests/unit/api/postage-quote-validation.test.ts`** (70+ test cases)
+1. **tests/unit/api/postage-quote-validation.test.ts** (70+ test cases)
    - Recipient validation (20 tests)
    - Sender validation (10 tests)
    - Quote service integration (2 tests)
    - Boundary value tests (15 tests)
    - Error message verification (3 tests)
 
-2. **`tests/unit/api/postage-quote-endpoint-validation.test.ts`** (50+ test cases)
+2. **tests/unit/api/postage-quote-endpoint-validation.test.ts** (50+ test cases)
    - HTTP 422 validation errors (15 tests)
    - Valid requests preserve shape (5 tests)
    - Deterministic error responses (2 tests)
@@ -162,7 +173,7 @@ if (error instanceof ZodError) {
 
 ### Error Handling
 
-**422 Validation Error** returned for:
+**122 Validation Error** returned for:
 
 - Empty or whitespace-only inputs
 - Wrong prefix (not 'G')
@@ -178,13 +189,13 @@ if (error instanceof ZodError) {
 All existing tests continue to pass:
 
 - Postage service tests: ✅ Pass
-- Domain schema tests: ✅ Pass
-- New validation tests: ✅ Pass
+- Domain schema tests:   Pass
+- New validation tests:   Pass
 
 ### Key Test Scenarios Verified
 
 | Scenario                   | Status  | Test Location                             |
-| -------------------------- | ------- | ----------------------------------------- |
+| -------------------------- | ------- | -------------------------------------------- |
 | Empty recipient/sender     | ✅ Pass | postage-quote-validation.test.ts          |
 | Whitespace-only inputs     | ✅ Pass | postage-quote-validation.test.ts          |
 | Invalid prefix             | ✅ Pass | postage-quote-endpoint-validation.test.ts |
@@ -279,7 +290,7 @@ All existing tests continue to pass:
 - **Validation overhead**: Minimal (regex check + length check)
 - **Normalization**: O(n) where n=56 (constant)
 - **Error handling**: No performance degradation
-- **Memory**: No additional memory for caching or state
+- `**Memory**: No additional memory for caching or state
 
 ## Future Enhancements
 
@@ -288,7 +299,7 @@ Potential improvements for future iterations:
 - Add rate limiting for quote requests
 - Cache validation results for repeated addresses
 - Add metrics for validation failure rates
-- Support for federated addresses (eve\*stealth.xyz)
+- Support for federated addresses (eve*stealth.xyz)
 
 ## Conclusion
 
