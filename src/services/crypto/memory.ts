@@ -195,12 +195,18 @@ export class BufferPool {
   /**
    * Release a buffer back to the pool for future reuse.
    *
-   * The buffer is zeroed before return (best-effort secret erasure). If the
-   * pool for this bucket is full the buffer is simply dropped for GC.
+   * The buffer is zeroed before return (best-effort secret erasure) and filed
+   * under the largest bucket whose size it can satisfy, so `acquire` never
+   * returns a buffer smaller than requested. If the pool for this bucket is
+   * full the buffer is simply dropped for GC.
    */
   release(buffer: ArrayBuffer): void {
-    const bucket = this.bucketFor(buffer.byteLength);
     new Uint8Array(buffer).fill(0);
+    const bucket = this.releaseBucketFor(buffer.byteLength);
+    if (bucket === null) {
+      // Too small to satisfy even the smallest bucket — drop for GC.
+      return;
+    }
     let pool = this.buckets.get(bucket);
     if (!pool) {
       pool = [];
@@ -235,6 +241,25 @@ export class BufferPool {
     if (size <= 32768) return 32768;
     if (size <= 65536) return 65536;
     return Math.ceil(size / 65536) * 65536;
+  }
+
+  /**
+   * Largest acquire-bucket size a buffer of `byteLength` can satisfy, i.e.
+   * the rounded-down size class. `acquire` rounds requests up, so filing by
+   * the rounded-up class would place a 100,000-byte buffer in the 131,072
+   * bucket where a later `acquire(131072)` would pop a buffer that is too
+   * small. Returns null when the buffer cannot satisfy any bucket.
+   */
+  private releaseBucketFor(byteLength: number): number | null {
+    if (byteLength < 256) return null;
+    if (byteLength < 65536) {
+      let bucket = 256;
+      for (const size of [512, 1024, 2048, 4096, 8192, 16384, 32768]) {
+        if (byteLength >= size) bucket = size;
+      }
+      return bucket;
+    }
+    return Math.floor(byteLength / 65536) * 65536;
   }
 }
 
