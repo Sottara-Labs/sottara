@@ -101,4 +101,3 @@ describe("backup archive encryption", () => {
     expect(other).not.toBe(first);
   });
 });
-

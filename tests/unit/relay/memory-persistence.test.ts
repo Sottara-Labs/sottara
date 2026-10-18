@@ -53,4 +53,3 @@ describe("MemoryRelayPersistence dequeue lifecycle", () => {
     expect(await persistence.getQueueDepth()).toBe(0);
   });
 });
-

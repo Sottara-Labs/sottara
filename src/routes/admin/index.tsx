@@ -292,7 +292,10 @@ function AdminDashboard() {
         {/* Filter Controls Bar */}
         <div className="p-4 border-b border-border dark:border-neutral-800 bg-card/10 dark:bg-neutral-900/10 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <label htmlFor="admin-filter-select" className="text-xs text-muted-foreground dark:text-neutral-500 font-medium">
+            <label
+              htmlFor="admin-filter-select"
+              className="text-xs text-muted-foreground dark:text-neutral-500 font-medium"
+            >
               Filter:
             </label>
             <select
@@ -308,7 +311,10 @@ function AdminDashboard() {
             </select>
           </div>
           <span className="text-[11px] text-muted-foreground dark:text-neutral-500 font-mono">
-            {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length} {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length === 1 ? "invite" : "invites"}
+            {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length}{" "}
+            {invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length === 1
+              ? "invite"
+              : "invites"}
           </span>
         </div>
 
@@ -318,7 +324,8 @@ function AdminDashboard() {
             <div className="p-12 text-center text-xs text-muted-foreground dark:text-neutral-500">
               Loading invite records...
             </div>
-          ) : invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length === 0 ? (
+          ) : invites.filter((i) => statusFilter === "all" || i.status === statusFilter).length ===
+            0 ? (
             <div className="p-12 text-center text-xs text-muted-foreground dark:text-neutral-500">
               No invite codes match the current filter.
             </div>
@@ -338,77 +345,77 @@ function AdminDashboard() {
                 {invites
                   .filter((i) => statusFilter === "all" || i.status === statusFilter)
                   .map((invite) => (
-                  <tr
-                    key={invite.code}
-                    className="border-b border-border/60 dark:border-neutral-800/60 hover:bg-accent/20 dark:hover:bg-neutral-900/20"
-                  >
-                    <td className="p-4 font-mono font-bold text-status-neutral dark:text-neutral-200 tracking-wide uppercase">
-                      {invite.code}
-                    </td>
-                    <td className="p-4">
-                      {invite.status === "active" ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-status-success dark:text-emerald-400 border border-emerald-500/20">
-                          Active
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-secondary dark:bg-neutral-800 text-muted-foreground dark:text-neutral-500 border border-border dark:border-neutral-700">
-                          Revoked
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-muted-foreground dark:text-neutral-400 max-w-xs truncate">
-                      {invite.reason || "N/A"}
-                    </td>
-                    <td className="p-4 text-muted-foreground dark:text-neutral-500 font-mono select-all">
-                      {invite.createdBy.slice(0, 6)}...{invite.createdBy.slice(-6)}
-                    </td>
-                    <td className="p-4 text-muted-foreground dark:text-neutral-500">
-                      {new Date(invite.createdAt).toLocaleString()}
-                    </td>
-                    <td className="p-4">
-                      {invite.status === "active" ? (
-                        revokingCode === invite.code ? (
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              placeholder="Reason"
-                              value={revokeReason}
-                              onChange={(e) => setRevokeReason(e.target.value)}
-                              className="px-2 py-1 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded text-[11px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
-                              required
-                            />
-                            <button
-                              onClick={() => handleRevokeInvite(invite.code)}
-                              className="p-1.5 bg-red-600/10 hover:bg-red-600 border border-red-500/20 hover:border-red-500 text-status-danger dark:text-red-400 hover:text-white rounded cursor-pointer transition-all"
-                            >
-                              <Trash2 className="size-3" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setRevokingCode(null);
-                                setRevokeReason("");
-                              }}
-                              className="p-1.5 bg-secondary dark:bg-neutral-800 hover:bg-accent dark:hover:bg-neutral-700 rounded text-muted-foreground dark:text-neutral-400 cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
+                    <tr
+                      key={invite.code}
+                      className="border-b border-border/60 dark:border-neutral-800/60 hover:bg-accent/20 dark:hover:bg-neutral-900/20"
+                    >
+                      <td className="p-4 font-mono font-bold text-status-neutral dark:text-neutral-200 tracking-wide uppercase">
+                        {invite.code}
+                      </td>
+                      <td className="p-4">
+                        {invite.status === "active" ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/10 text-status-success dark:text-emerald-400 border border-emerald-500/20">
+                            Active
+                          </span>
                         ) : (
-                          <button
-                            onClick={() => setRevokingCode(invite.code)}
-                            className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-status-danger dark:text-red-400 hover:text-status-danger dark:hover:text-red-300 rounded font-semibold border border-red-500/20 transition-all cursor-pointer"
-                          >
-                            Revoke
-                          </button>
-                        )
-                      ) : (
-                        <span className="text-muted-foreground dark:text-neutral-600 font-mono text-[10px]">
-                          Revoked by {invite.revokedBy?.slice(0, 4)}...
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          <span className="px-2 py-0.5 rounded-full text-[10px] bg-secondary dark:bg-neutral-800 text-muted-foreground dark:text-neutral-500 border border-border dark:border-neutral-700">
+                            Revoked
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 text-muted-foreground dark:text-neutral-400 max-w-xs truncate">
+                        {invite.reason || "N/A"}
+                      </td>
+                      <td className="p-4 text-muted-foreground dark:text-neutral-500 font-mono select-all">
+                        {invite.createdBy.slice(0, 6)}...{invite.createdBy.slice(-6)}
+                      </td>
+                      <td className="p-4 text-muted-foreground dark:text-neutral-500">
+                        {new Date(invite.createdAt).toLocaleString()}
+                      </td>
+                      <td className="p-4">
+                        {invite.status === "active" ? (
+                          revokingCode === invite.code ? (
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Reason"
+                                value={revokeReason}
+                                onChange={(e) => setRevokeReason(e.target.value)}
+                                className="px-2 py-1 bg-card dark:bg-neutral-900 border border-border dark:border-neutral-800 rounded text-[11px] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2"
+                                required
+                              />
+                              <button
+                                onClick={() => handleRevokeInvite(invite.code)}
+                                className="p-1.5 bg-red-600/10 hover:bg-red-600 border border-red-500/20 hover:border-red-500 text-status-danger dark:text-red-400 hover:text-white rounded cursor-pointer transition-all"
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setRevokingCode(null);
+                                  setRevokeReason("");
+                                }}
+                                className="p-1.5 bg-secondary dark:bg-neutral-800 hover:bg-accent dark:hover:bg-neutral-700 rounded text-muted-foreground dark:text-neutral-400 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setRevokingCode(invite.code)}
+                              className="px-2.5 py-1 bg-red-500/10 hover:bg-red-500/20 text-status-danger dark:text-red-400 hover:text-status-danger dark:hover:text-red-300 rounded font-semibold border border-red-500/20 transition-all cursor-pointer"
+                            >
+                              Revoke
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-muted-foreground dark:text-neutral-600 font-mono text-[10px]">
+                            Revoked by {invite.revokedBy?.slice(0, 4)}...
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           )}

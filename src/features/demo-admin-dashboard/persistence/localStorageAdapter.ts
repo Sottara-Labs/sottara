@@ -24,7 +24,9 @@ function classifyStorageError(error: unknown, operation: "save" | "load" | "clea
   if (
     operation === "save" &&
     error instanceof DOMException &&
-    (error.name === "QuotaExceededError" || (error as any).code === 22 || (error as any).code === 1014)
+    (error.name === "QuotaExceededError" ||
+      (error as any).code === 22 ||
+      (error as any).code === 1014)
   ) {
     return { kind: "quota_exceeded" };
   }
