@@ -1,4 +1,4 @@
-"use client";
+"tuse client";
 
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
