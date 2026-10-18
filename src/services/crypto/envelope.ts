@@ -19,10 +19,11 @@ import { recordCryptoTelemetry, type CryptoResultCode } from "./telemetry";
 import { getDefaultSuite, getDefaultVersion } from "./suites";
 import { encodeAad } from "./aad";
 import {
-  wrapContentKeyForRecipients,
+  wrapRawContentKeyForRecipients,
   type WrappedKeyEntry,
   importRecipientPublicKey,
 } from "./key-wrap";
+import { createSealingKey } from "./keys";
 
 export interface EnvelopeAttachment {
   filename: string;
@@ -145,22 +146,18 @@ export async function sealEnvelope(input: SealEnvelopeInput): Promise<SealedEnve
       signal?.throwIfAborted();
     };
 
-    const { generateKey, getRandomValues, now } = getCryptoTestVectors();
+    const { getRandomValues, now } = getCryptoTestVectors();
     const payloadTimestamp = now ? now() : new Date();
 
     // --- Key generation (no plaintext allocated yet) ---
+    // The sealing key is minted from raw bytes: non-extractable and
+    // encrypt-only, so it can neither decrypt nor be read back. Only the raw
+    // bytes (wrapped below for recipients) ever leave this path.
     throwIfAborted();
-    const key = generateKey
-      ? await generateKey(
-          { name: defaultSuite.webCryptoName, length: defaultSuite.keyBits },
-          true,
-          ["encrypt", "decrypt"],
-        )
-      : await crypto.subtle.generateKey(
-          { name: defaultSuite.webCryptoName, length: defaultSuite.keyBits },
-          true,
-          ["encrypt", "decrypt"],
-        );
+    const rawContentKey = getRandomValues
+      ? getRandomValues(new Uint8Array(defaultSuite.keyBits / 8))
+      : crypto.getRandomValues(new Uint8Array(defaultSuite.keyBits / 8));
+    const key = await createSealingKey(rawContentKey);
 
     // --- Pre-process attachments to get descriptors for AAD ---
     const attachmentsToProcess = input.attachments ?? [];
@@ -314,22 +311,28 @@ export async function sealEnvelope(input: SealEnvelopeInput): Promise<SealedEnve
 
     // --- Key wrapping (if recipient public keys provided) ---
     let wrappedKeys: WrappedKeyEntry[] | undefined;
-    if (input.recipientPublicKeys && input.recipientPublicKeys.length > 0) {
-      throwIfAborted();
-      try {
-        // Import recipient public keys
-        const recipientKeys = await Promise.all(
-          input.recipientPublicKeys.map((pkBase64) => importRecipientPublicKey(pkBase64)),
-        );
+    try {
+      if (input.recipientPublicKeys && input.recipientPublicKeys.length > 0) {
+        throwIfAborted();
+        try {
+          // Import recipient public keys
+          const recipientKeys = await Promise.all(
+            input.recipientPublicKeys.map((pkBase64) => importRecipientPublicKey(pkBase64)),
+          );
 
-        // Wrap the content key for all recipients
-        wrappedKeys = await wrapContentKeyForRecipients(key, recipientKeys);
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          throw new Error(`Key wrapping failed: ${error.message}`);
+          // Wrap the raw content key for all recipients
+          wrappedKeys = await wrapRawContentKeyForRecipients(rawContentKey, recipientKeys);
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            throw new Error(`Key wrapping failed: ${error.message}`);
+          }
+          throw new Error("Key wrapping failed");
         }
-        throw new Error("Key wrapping failed");
       }
+    } finally {
+      // The raw bytes are no longer needed once wrapping is done; best-effort
+      // zeroing keeps them from lingering in heap buffers.
+      clearSecret(rawContentKey);
     }
 
     const payload: EnvelopePayload = {

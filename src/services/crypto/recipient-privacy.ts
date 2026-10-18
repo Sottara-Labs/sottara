@@ -98,6 +98,24 @@ export async function createPrivacyEntry(
   recipientPublicKey: CryptoKey,
   contentKey: CryptoKey,
 ): Promise<PrivacyPreservingRecipientEntry> {
+  const rawContentKey = new Uint8Array(await crypto.subtle.exportKey("raw", contentKey));
+  return createPrivacyEntryFromRawKey(recipientPublicKey, rawContentKey);
+}
+
+/**
+ * Create a privacy-preserving recipient entry from raw content-key bytes.
+ *
+ * Same wire format as {@link createPrivacyEntry}; use this when the content
+ * key is non-extractable and only the raw bytes needed for transport exist.
+ *
+ * @param recipientPublicKey The recipient's P-256 public key.
+ * @param rawContentKey The 256-bit AES-256-GCM content key bytes to wrap.
+ * @returns The privacy-preserving recipient entry.
+ */
+export async function createPrivacyEntryFromRawKey(
+  recipientPublicKey: CryptoKey,
+  rawContentKey: Uint8Array,
+): Promise<PrivacyPreservingRecipientEntry> {
   // 1. Generate an ephemeral P-256 keypair for ECDH
   const ephemeralKeyPair = await generateEcdhKeyPair();
 
@@ -146,13 +164,12 @@ export async function createPrivacyEntry(
   );
   const blindedIdBytes = await crypto.subtle.sign("HMAC", matchingPrk, HKDF_INFO);
 
-  // 4. Wrap the content key
+  // 4. Wrap the content key bytes
   const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const rawContentKey = await crypto.subtle.exportKey("raw", contentKey);
   const wrappedBytes = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: nonce as BufferSource },
     wrappingKey,
-    rawContentKey,
+    rawContentKey as BufferSource,
   );
 
   return {

@@ -3,6 +3,7 @@ import { sealEnvelope } from "../../../src/services/crypto/envelope";
 import { openEnvelope, type KeyProvider } from "../../../src/services/crypto/open-envelope";
 import { sanitizeFilenameForDisplay } from "../../../src/services/crypto/attachment-metadata";
 import { getCryptoTestVectors } from "../../../src/services/crypto/testing";
+import { createOpeningKey } from "../../../src/services/crypto/keys";
 
 describe("Attachment Metadata Authentication & Sanitation", () => {
   const sender = "alice@example.com";
@@ -23,23 +24,27 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
     data: new TextEncoder().encode("Dummy txt content").buffer,
   };
 
+  const rawContentKey = new Uint8Array(32).fill(0x42);
+  const deterministicRandomness = (array: Uint8Array) => {
+    array.fill(0x42);
+    return array;
+  };
+
+  const seal = (input: Parameters<typeof sealEnvelope>[0]) => {
+    getCryptoTestVectors().getRandomValues = deterministicRandomness;
+    return sealEnvelope(input);
+  };
+
   const setupMockKey = async () => {
-    const vectors = getCryptoTestVectors();
-    const mockKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
-      "encrypt",
-      "decrypt",
-    ]);
-    vectors.generateKey = async () => mockKey;
     const keyProvider: KeyProvider = {
       async resolveKey() {
-        return mockKey;
+        return await createOpeningKey(rawContentKey);
       },
     };
     return {
-      mockKey,
       keyProvider,
       cleanUp: () => {
-        vectors.generateKey = undefined;
+        getCryptoTestVectors().getRandomValues = undefined;
       },
     };
   };
@@ -47,7 +52,7 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
   it("successfully seals and opens an envelope with authenticated attachments", async () => {
     const { keyProvider, cleanUp } = await setupMockKey();
     try {
-      const sealed = await sealEnvelope({
+      const sealed = await seal({
         sender,
         recipient,
         body,
@@ -67,7 +72,7 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
   it("fails verification if an attachment filename is mutated", async () => {
     const { keyProvider, cleanUp } = await setupMockKey();
     try {
-      const sealed = await sealEnvelope({
+      const sealed = await seal({
         sender,
         recipient,
         body,
@@ -88,7 +93,7 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
   it("fails verification if an attachment MIME type is mutated", async () => {
     const { keyProvider, cleanUp } = await setupMockKey();
     try {
-      const sealed = await sealEnvelope({
+      const sealed = await seal({
         sender,
         recipient,
         body,
@@ -109,7 +114,7 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
   it("fails verification if attachments are reordered", async () => {
     const { keyProvider, cleanUp } = await setupMockKey();
     try {
-      const sealed = await sealEnvelope({
+      const sealed = await seal({
         sender,
         recipient,
         body,
@@ -139,7 +144,7 @@ describe("Attachment Metadata Authentication & Sanitation", () => {
         data: new TextEncoder().encode("etc passwd content").buffer,
       };
 
-      const sealed = await sealEnvelope({
+      const sealed = await seal({
         sender,
         recipient,
         body,

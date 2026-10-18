@@ -10,6 +10,7 @@ import {
 import { sealEnvelope } from "../../../src/services/crypto/envelope";
 import { openEnvelope, type KeyProvider } from "../../../src/services/crypto/open-envelope";
 import { getCryptoTestVectors } from "../../../src/services/crypto/testing";
+import { createOpeningKey } from "../../../src/services/crypto/keys";
 
 describe("Cryptographic Key Identifiers and Rotation Metadata", () => {
   describe("deriveKeyId", () => {
@@ -205,13 +206,13 @@ describe("Cryptographic Key Identifiers and Rotation Metadata", () => {
       const recipientKeyId = "kid_recipient_test";
       const senderKeyId = "kid_sender_test";
 
-      // Use test vectors for deterministic key generation
+      // Deterministic content-key bytes via the test-vector hook.
       const vectors = getCryptoTestVectors();
-      const mockKey = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
-        "encrypt",
-        "decrypt",
-      ]);
-      vectors.generateKey = async () => mockKey;
+      const rawContentKey = new Uint8Array(32).fill(0x42);
+      vectors.getRandomValues = (array: Uint8Array) => {
+        array.fill(0x42);
+        return array;
+      };
 
       const sealed = await sealEnvelope({
         sender,
@@ -232,7 +233,7 @@ describe("Cryptographic Key Identifiers and Rotation Metadata", () => {
       const keyProvider: KeyProvider = {
         async resolveKey(rec: string, kid?: string) {
           resolvedKeyIdPassed = kid;
-          return mockKey;
+          return await createOpeningKey(rawContentKey);
         },
       };
 
@@ -244,7 +245,7 @@ describe("Cryptographic Key Identifiers and Rotation Metadata", () => {
       expect(resolvedKeyIdPassed).toBe(recipientKeyId);
 
       // Clean up test vectors
-      vectors.generateKey = undefined;
+      vectors.getRandomValues = undefined;
     });
   });
 });

@@ -27,6 +27,7 @@
 
 import {
   createPrivacyEntry,
+  createPrivacyEntryFromRawKey,
   locateAndDecryptEntry,
   type PrivacyPreservingRecipientEntry,
 } from "./recipient-privacy";
@@ -116,6 +117,53 @@ export async function wrapContentKeyForRecipients(
   try {
     return await Promise.all(
       recipientPublicKeys.map((publicKey) => wrapContentKey(contentKey, publicKey)),
+    );
+  } catch (err) {
+    if (err instanceof KeyWrapError) {
+      throw err;
+    }
+    if (err instanceof Error) {
+      throw new KeyWrapError(`multi-recipient wrapping failed: ${err.message}`);
+    }
+    throw new KeyWrapError("multi-recipient wrapping failed");
+  }
+}
+
+/**
+ * Wrap raw content-key bytes for multiple recipients.
+ *
+ * Use this when the content key is non-extractable: the seal path mints an
+ * encrypt-only key and keeps only its raw bytes long enough to wrap them.
+ * Produces the same wire format as {@link wrapContentKeyForRecipients}.
+ *
+ * @param rawContentKey The 256-bit AES-256-GCM content key bytes to wrap.
+ * @param recipientPublicKeys Array of recipient P-256 ECDH public keys.
+ * @returns Array of wrapped key entries, one per recipient.
+ * @throws KeyWrapError if the key material is invalid or any wrapping fails.
+ */
+export async function wrapRawContentKeyForRecipients(
+  rawContentKey: Uint8Array,
+  recipientPublicKeys: CryptoKey[],
+): Promise<WrappedKeyEntry[]> {
+  if (rawContentKey.length !== 32) {
+    throw new KeyWrapError("content key must be 32 bytes");
+  }
+
+  if (recipientPublicKeys.length === 0) {
+    throw new KeyWrapError("at least one recipient public key is required");
+  }
+
+  try {
+    return await Promise.all(
+      recipientPublicKeys.map(async (publicKey) => {
+        const entry = await createPrivacyEntryFromRawKey(publicKey, rawContentKey);
+        return {
+          ephemeralPublicKey: entry.ephemeralPublicKey,
+          blindedRecipientId: entry.blindedRecipientId,
+          wrappedKey: entry.wrappedKey,
+          nonce: entry.nonce,
+        };
+      }),
     );
   } catch (err) {
     if (err instanceof KeyWrapError) {
