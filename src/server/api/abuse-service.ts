@@ -350,11 +350,20 @@ export async function checkDeviceLimit(
   fingerprint: string,
   opts?: { route?: AbuseRoute; windowMs?: number; max?: number },
 ): Promise<AbuseDecision> {
+  const route = opts?.route ?? "postage_submit";
+  const normalized = fingerprint.trim().toLowerCase();
+  if (!normalized || normalized === "unknown") {
+    return { allowed: true, flagged: true };
+  }
+
   const windowMs = opts?.windowMs ?? 60_000;
-  const max = opts?.max ?? 30;
-  return withOutagePolicy(opts?.route ?? "postage_submit", "device", async () => {
-    const count = await repository.incrementCounter(`device:${fingerprint}`, windowMs / 1000);
-    if (count > max) return { allowed: false, retryAfterSeconds: windowMs / 1000 };
+  const max = opts?.max ?? (route === "registration" ? 3 : 30);
+  return withOutagePolicy(route, "device", async () => {
+    const count = await repository.incrementCounter(
+      `device:${route}:${normalized}`,
+      windowMs / 1000,
+    );
+    if (count > max) return rateLimited(windowMs / 1000);
     return { allowed: true };
   });
 }
@@ -867,7 +876,10 @@ export async function enforceCentralAbuse(
 
   // 8. Device fingerprint check
   if (opts.fingerprint) {
-    const deviceCheck = await checkDeviceLimit(repository, opts.fingerprint, { route: opts.route });
+    const deviceCheck = await checkDeviceLimit(repository, opts.fingerprint, {
+      route: opts.route,
+      max: opts.route === "registration" ? 3 : undefined,
+    });
     if (!deviceCheck.allowed) {
       metrics.incrementCounter("abuse_throttled", {
         route: opts.route,
