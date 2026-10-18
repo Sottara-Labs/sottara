@@ -179,17 +179,17 @@ export function searchLocalEmails(
 }
 
 /**
- * Merges server-side metadata search results with local decrypted plaintext matches,
- * deduplicating by ID and prioritizing high-relevance matches.
+ * Merges server-side metadata search results with precomputed local decrypted
+ * matches, deduplicating by ID and prioritizing the local plaintext results.
+ *
+ * Callers that already filtered the local set (query plus filter pills, e.g.
+ * `useMailSearch`) pass those items directly so the merged list honours the
+ * active filters.
  */
-export function mergeSearchResults(
+export function mergeSearchResultsWithLocal(
   serverItems: SearchResultItemDto[],
-  localEmails: Email[],
-  rawQuery: string,
+  localItems: SearchResultItemDto[],
 ): SearchResultItemDto[] {
-  const parsed = parseSearchQuery(rawQuery);
-  const localItems = searchLocalEmails(localEmails, parsed);
-
   const seenIds = new Set<string>();
   const merged: SearchResultItemDto[] = [];
 
@@ -210,4 +210,19 @@ export function mergeSearchResults(
   }
 
   return merged;
+}
+
+/**
+ * Merges server-side metadata search results with local decrypted plaintext
+ * matches derived from `rawQuery`, deduplicating by ID and prioritizing
+ * high-relevance matches.
+ */
+export function mergeSearchResults(
+  serverItems: SearchResultItemDto[],
+  localEmails: Email[],
+  rawQuery: string,
+): SearchResultItemDto[] {
+  const parsed = parseSearchQuery(rawQuery);
+  const localItems = searchLocalEmails(localEmails, parsed);
+  return mergeSearchResultsWithLocal(serverItems, localItems);
 }

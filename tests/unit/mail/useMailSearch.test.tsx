@@ -208,5 +208,51 @@ describe("Client Search Logic (Issue #1972 / BETA-065)", () => {
       expect(result.current.debouncedQuery).toBe("Roadmap");
       vi.useRealTimers();
     });
+
+    it("excludes local hits that the active filter pills contradict", () => {
+      vi.useFakeTimers();
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+
+      const { result } = renderHook(
+        () =>
+          useMailSearch({
+            actor: "actor-1",
+            emails: mockEmails,
+            debounceMs: 100,
+          }),
+        { wrapper },
+      );
+
+      act(() => {
+        result.current.setRawQuery("Budget");
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+
+      // Without filters, the local decrypted hit is merged in.
+      expect(result.current.results.map((item) => item.id)).toContain("mail-2");
+
+      // mail-2 is read; the unread pill must exclude it from both the local
+      // set and the merged output.
+      act(() => {
+        result.current.setFilters({ unread: true });
+      });
+
+      expect(result.current.localResults.map((item) => item.id)).not.toContain("mail-2");
+      expect(result.current.results.map((item) => item.id)).not.toContain("mail-2");
+
+      // Clearing the pill restores the hit.
+      act(() => {
+        result.current.setFilters({});
+      });
+
+      expect(result.current.results.map((item) => item.id)).toContain("mail-2");
+      vi.useRealTimers();
+    });
   });
 });
