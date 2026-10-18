@@ -1,6 +1,7 @@
 /**
  * BETA-088 — shared release-gate summary semantics.
- * Required gate IDs must stay in sync with .github/workflows/ci.yml job artifacts.
+ * Required gate IDs must stay in sync with the release-gate workflow artifacts
+ * (`.github/workflows/ci.yml` and `.github/workflows/beta-live-testnet.yml`).
  */
 
 export const REQUIRED_GATES = Object.freeze([
@@ -18,6 +19,11 @@ export const REQUIRED_GATES = Object.freeze([
   "visual-e2e",
   "security",
   "provenance",
+  "build-reproducibility",
+  "pinned-versions",
+  "artifact-secrets",
+  "beta-soroban-live",
+  "beta-live-workflow2",
 ]);
 
 export const GATE_OWNERS = Object.freeze({
@@ -25,6 +31,7 @@ export const GATE_OWNERS = Object.freeze({
   "client-checks": "platform/client",
   "contract-checks": "platform/contracts",
   "build-reproducibility": "platform/client",
+  "pinned-versions": "platform/release",
   "contract-registry": "platform/contracts",
   "beta-migrations": "platform/storage",
   "beta-backup": "platform/storage",
@@ -39,12 +46,24 @@ export const GATE_OWNERS = Object.freeze({
   "artifact-secrets": "security/platform",
   provenance: "platform/release",
   "beta-soroban-live": "platform/contracts",
+  "beta-live-workflow2": "protocol/relay",
 });
 
 /** Privileged scans may skip on fork PRs; they must not count as a silent pass for releasable. */
 export const FORK_ALLOWED_SKIPS = Object.freeze(["security"]);
 
+/**
+ * Gates written by the operator-triggered `.github/workflows/beta-live-testnet.yml`
+ * run. They are part of the required set, but their results cannot appear in an
+ * ordinary `ci.yml` summary: artifacts from another workflow run are only visible
+ * with explicit `run-id` scoping, which the summary job does not use. Their absence
+ * is therefore reported as `skipped` (never a silent pass — `releasable` stays
+ * false), while a recorded failure blocks the summary like any other gate.
+ */
+export const OPERATOR_GATES = Object.freeze(["beta-soroban-live", "beta-live-workflow2"]);
+
 export const MISSING_GATE_REASON = "missing required gate result";
+export const MISSING_OPERATOR_GATE_REASON = "operator-triggered gate result not in this run";
 
 const STATUS_RANK = { fail: 0, blocked: 1, skipped: 2, pass: 3 };
 
@@ -59,13 +78,14 @@ export function assembleGates(loadedGates, { requiredGates = REQUIRED_GATES } = 
 
   const missingRequiredGates = requiredGates.filter((id) => !byId.has(id));
   for (const id of missingRequiredGates) {
+    const operator = OPERATOR_GATES.includes(id);
     byId.set(id, {
       gateId: id,
       name: id,
       owner: GATE_OWNERS[id] ?? "unassigned",
       dependency: "BETA-088",
-      status: "fail",
-      message: MISSING_GATE_REASON,
+      status: operator ? "skipped" : "fail",
+      message: operator ? MISSING_OPERATOR_GATE_REASON : MISSING_GATE_REASON,
     });
   }
 
@@ -92,7 +112,7 @@ export function overallVerdict(items, { requiredGates = REQUIRED_GATES, forkPr =
   if (items.some((g) => g.status === "fail")) return "fail";
   if (items.some((g) => g.status === "blocked")) return "blocked";
 
-  const allowedSkip = new Set(forkPr ? FORK_ALLOWED_SKIPS : []);
+  const allowedSkip = new Set([...(forkPr ? FORK_ALLOWED_SKIPS : []), ...OPERATOR_GATES]);
   const requiredItems = requiredGates.map((id) => items.find((g) => g.gateId === id));
   for (const gate of requiredItems) {
     if (gate.status === "pass") continue;
@@ -192,7 +212,8 @@ export function renderMarkdown(s) {
   if (s.missingRequiredGates.length > 0) {
     lines.push(``, `## Missing Required Gates`, ``);
     for (const gateId of s.missingRequiredGates) {
-      lines.push(`- \`${gateId}\` (${MISSING_GATE_REASON})`);
+      const gate = s.gates.find((g) => g.gateId === gateId);
+      lines.push(`- \`${gateId}\` (${gate?.message ?? MISSING_GATE_REASON})`);
     }
   }
 
@@ -209,7 +230,7 @@ export function renderMarkdown(s) {
 
   lines.push(
     ``,
-    `> Semantics: \`pass\` = every required gate exists and passed. \`blocked\` = unresolved named dependency. \`fail\` = a required gate failed or is missing. Fork PRs may \`skip\` privileged \`security\` scans; that is never releasable.`,
+    `> Semantics: \`pass\` = every required gate exists and passed; operator-triggered live gates absent from the run are \`skipped\`, never a pass. \`blocked\` = unresolved named dependency. \`fail\` = a required gate failed or is missing. Fork PRs may \`skip\` privileged \`security\` scans; that is never releasable.`,
   );
   return lines.join("\n") + "\n";
 }
