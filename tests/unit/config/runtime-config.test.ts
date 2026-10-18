@@ -4,6 +4,7 @@ import {
   getPublicConfig,
   getRedactedConfig,
   loadRuntimeConfig,
+  parseNumber,
 } from "../../../src/config";
 
 vi.mock("../../../src/config/registry", () => ({
@@ -249,6 +250,141 @@ describe("BETA-001 :: Beta Runtime Configuration Contract", () => {
       expect(matrix).toContain("Relay API Key:         [CONFIGURED]");
       expect(matrix).not.toContain("secret-123");
       expect(matrix).not.toContain("api-key-456");
+    });
+  });
+
+  describe("Numeric Setting Parsing & Per-Field Bounds (Issue #529)", () => {
+    it("parses valid decimal integers strictly and rejects malformed values naming the variable", () => {
+      expect(parseNumber("300000", 100, "STEALTH_TEST")).toBe(300000);
+      expect(parseNumber("-42", 100, "STEALTH_TEST")).toBe(-42);
+      expect(parseNumber("0", 100, "STEALTH_TEST")).toBe(0);
+      expect(parseNumber(12345, 100, "STEALTH_TEST")).toBe(12345);
+      expect(parseNumber("", 100, "STEALTH_TEST")).toBe(100);
+      expect(parseNumber(undefined, 100, "STEALTH_TEST")).toBe(100);
+      expect(parseNumber(null, 100, "STEALTH_TEST")).toBe(100);
+
+      const malformedCases = ["300000abc", "1e5", "0x10", "300.5", "abc", "12 34"];
+      for (const val of malformedCases) {
+        expect(() => parseNumber(val, 100, "STEALTH_TEST_VAR")).toThrow(
+          /STEALTH_TEST_VAR.*valid integer/,
+        );
+      }
+    });
+
+    it("fails fast naming the variable when given malformed numeric strings like 300000abc", () => {
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "development",
+          env: { STEALTH_AUTH_CHALLENGE_LIFETIME_MS: "300000abc" },
+        }),
+      ).toThrow(/STEALTH_AUTH_CHALLENGE_LIFETIME_MS/);
+
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "development",
+          env: { STEALTH_RELAY_TIMEOUT_MS: "10000xyz" },
+        }),
+      ).toThrow(/STEALTH_RELAY_TIMEOUT_MS/);
+
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "development",
+          env: { STEALTH_VERIFICATION_MAX_ATTEMPTS: "5foo" },
+        }),
+      ).toThrow(/STEALTH_VERIFICATION_MAX_ATTEMPTS/);
+    });
+
+    it("rejects 0 for max attempts and negative clock skew", () => {
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "development",
+          env: { STEALTH_VERIFICATION_MAX_ATTEMPTS: "0" },
+        }),
+      ).toThrow(/maxAttempts|verification/i);
+
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "development",
+          env: { STEALTH_AUTH_CLOCK_SKEW_MS: "-1" },
+        }),
+      ).toThrow(/authClockSkewMs|clock skew/i);
+    });
+
+    describe("Table-driven per-field bounds", () => {
+      const boundCases = [
+        // Attempts >= 1
+        {
+          field: "STEALTH_VERIFICATION_MAX_ATTEMPTS",
+          invalid: ["0", "-1"],
+          valid: ["1", "5"],
+          desc: "attempts ≥ 1",
+        },
+        // Timeouts >= 100 ms
+        {
+          field: "STEALTH_RELAY_TIMEOUT_MS",
+          invalid: ["99", "0", "-50"],
+          valid: ["100", "5000"],
+          desc: "timeouts ≥ 100 ms",
+        },
+        // Skew >= 0
+        {
+          field: "STEALTH_AUTH_CLOCK_SKEW_MS",
+          invalid: ["-1", "-30000"],
+          valid: ["0", "30000"],
+          desc: "skew ≥ 0",
+        },
+        // TTLs >= 60 s (60,000 ms)
+        {
+          field: "STEALTH_AUTH_CHALLENGE_LIFETIME_MS",
+          invalid: ["59999", "0", "-1"],
+          valid: ["60000", "300000"],
+          desc: "auth challenge lifetime TTL ≥ 60 s",
+        },
+        {
+          field: "STEALTH_AUTH_NONCE_TTL_MS",
+          invalid: ["59999", "0", "-1"],
+          valid: ["60000", "300000"],
+          desc: "auth nonce TTL ≥ 60 s",
+        },
+        {
+          field: "STEALTH_QUOTE_LIFETIME_MS",
+          invalid: ["59999", "0", "-1"],
+          valid: ["60000", "300000"],
+          desc: "quote lifetime TTL ≥ 60 s",
+        },
+        {
+          field: "STEALTH_VERIFICATION_TOKEN_LIFETIME_MS",
+          invalid: ["59999", "0", "-1"],
+          valid: ["60000", "86400000"],
+          desc: "verification token lifetime TTL ≥ 60 s",
+        },
+      ];
+
+      for (const { field, invalid, valid, desc } of boundCases) {
+        describe(`${field} (${desc})`, () => {
+          for (const val of invalid) {
+            it(`rejects invalid value: "${val}"`, () => {
+              expect(() =>
+                loadRuntimeConfig({
+                  profile: "development",
+                  env: { [field]: val },
+                }),
+              ).toThrow();
+            });
+          }
+
+          for (const val of valid) {
+            it(`accepts valid bound value: "${val}"`, () => {
+              expect(() =>
+                loadRuntimeConfig({
+                  profile: "development",
+                  env: { [field]: val },
+                }),
+              ).not.toThrow();
+            });
+          }
+        });
+      }
     });
   });
 });
