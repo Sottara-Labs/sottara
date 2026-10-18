@@ -17,13 +17,20 @@ const FOCUSABLE_SELECTOR = [
  * - Calls `onClose` when Escape is pressed.
  * - Restores focus to the previously-focused element on unmount.
  *
- * The effect is idempotent: if focus is already inside the container when the
- * effect re-runs (e.g. the `onClose` identity changed), it does not steal
- * focus or re-capture the previously focused element.
+ * The setup is idempotent: if focus is already inside the container when the
+ * effect re-runs (e.g. under StrictMode's double-mount), it does not steal
+ * focus or re-capture the previously focused element. `onClose` is read from a
+ * ref, so callers may pass inline callbacks without re-running the effect on
+ * every parent render.
  */
 export function useFocusTrap(active: boolean, onClose: () => void) {
   const containerRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!active) return;
@@ -50,7 +57,7 @@ export function useFocusTrap(active: boolean, onClose: () => void) {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -87,7 +94,7 @@ export function useFocusTrap(active: boolean, onClose: () => void) {
         previousFocusRef.current.focus();
       }
     };
-  }, [active, onClose]);
+  }, [active]);
 
   return containerRef;
 }

@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useFocusTrap } from "@/lib/useFocusTrap";
@@ -91,5 +92,66 @@ describe("useFocusTrap", () => {
 
     rerender(<Harness active={false} onClose={onClose} />);
     expect(document.activeElement).toBe(screen.getByText("outside"));
+  });
+
+  it("keeps focus in the dialog across a parent re-render", () => {
+    function RerenderingHarness({ active }: { active: boolean }) {
+      const [renders, setRenders] = useState(0);
+      const containerRef = useFocusTrap(active, () => {});
+
+      return (
+        <div>
+          <button type="button">outside</button>
+          <button type="button" onClick={() => setRenders((count) => count + 1)}>
+            rerender {renders}
+          </button>
+          <div ref={containerRef} data-testid="trap" tabIndex={-1}>
+            <button type="button">first</button>
+            <button type="button">middle</button>
+            <button type="button">last</button>
+          </div>
+        </div>
+      );
+    }
+
+    const { rerender } = render(<RerenderingHarness active={false} />);
+    screen.getByText("outside").focus();
+    expect(document.activeElement).toBe(screen.getByText("outside"));
+
+    rerender(<RerenderingHarness active />);
+    expect(document.activeElement).toBe(screen.getByText("first"));
+
+    screen.getByText("middle").focus();
+
+    fireEvent.click(screen.getByText(/rerender/));
+
+    expect(document.activeElement).toBe(screen.getByText("middle"));
+  });
+
+  it("invokes the latest onClose after a re-render", () => {
+    const closes: number[] = [];
+
+    function RerenderingHarness() {
+      const [renders, setRenders] = useState(0);
+      const containerRef = useFocusTrap(true, () => closes.push(renders));
+
+      return (
+        <div>
+          <button type="button" onClick={() => setRenders((count) => count + 1)}>
+            rerender {renders}
+          </button>
+          <div ref={containerRef} data-testid="trap" tabIndex={-1}>
+            <button type="button">first</button>
+          </div>
+        </div>
+      );
+    }
+
+    render(<RerenderingHarness />);
+    fireEvent.click(screen.getByText(/rerender/));
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(closes).toEqual([1]);
   });
 });
