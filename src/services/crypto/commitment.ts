@@ -17,6 +17,8 @@
  */
 
 import { CryptoError } from "./errors";
+import { fromHex } from "./codec";
+import { constantTimeEqual } from "./constant-time";
 
 const SUPPORTED_VERSION = "v1";
 const SUPPORTED_ALGORITHM = "sha256";
@@ -45,6 +47,11 @@ export async function createCommitment(ciphertext: Uint8Array): Promise<string> 
  * Parses and verifies a versioned commitment string against the ciphertext.
  * Throws a stable CryptoError if parsing fails, algorithm is unsupported,
  * or there is a digest mismatch.
+ *
+ * The declared digest is decoded back to bytes and compared against the
+ * recomputed SHA-256 with `constantTimeEqual`: a byte-wise early-exit `!==`
+ * on secret-derived hash output leaks how many leading bytes a forged
+ * commitment got right, so the comparison never short-circuits.
  *
  * @param commitment The versioned commitment string to verify.
  * @param ciphertext The raw ciphertext bytes.
@@ -81,10 +88,16 @@ export async function verifyCommitment(commitment: string, ciphertext: Uint8Arra
 
   // Calculate expected digest
   const hashBuffer = await crypto.subtle.digest("SHA-256", ciphertext as BufferSource);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const expectedDigest = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-  if (digest !== expectedDigest) {
+  // Decode the declared digest and compare the raw bytes in constant time.
+  let declaredDigest: Uint8Array;
+  try {
+    declaredDigest = fromHex(digest, 32);
+  } catch {
+    throw new CryptoError("crypto_commitment_error", "Content commitment mismatch");
+  }
+
+  if (!constantTimeEqual(declaredDigest, new Uint8Array(hashBuffer))) {
     throw new CryptoError("crypto_commitment_error", "Content commitment mismatch");
   }
 }
