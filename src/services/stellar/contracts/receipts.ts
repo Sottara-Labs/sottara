@@ -42,9 +42,13 @@ export interface ReceiptsClientOptions {
 
 /** Map a contract error code to an actionable ReceiptsError variant. */
 export function parseReceiptsError(code: number): ReceiptsError | undefined {
-  return Object.values(ReceiptsError).includes(code as ReceiptsError)
-    ? (code as ReceiptsError)
-    : undefined;
+  const variants: Record<number, ReceiptsError> = {
+    1: ReceiptsError.DuplicateReceipt,
+    2: ReceiptsError.ReceiptNotFound,
+    3: ReceiptsError.AlreadyRead,
+    4: ReceiptsError.CommitmentMismatch,
+  };
+  return variants[code];
 }
 
 /** Typed Soroban contract client for the Receipts contract. */
@@ -86,7 +90,7 @@ export async function delivered(
   sender: string,
   recipient: string,
 ): Promise<contract.Ok<Receipt> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).delivered({
+  const tx = await client.delivered({
     message_id,
     payload_hash,
     protocol_version,
@@ -100,7 +104,7 @@ export async function read(
   client: contract.Client,
   message_id: Buffer,
 ): Promise<contract.Ok<Receipt> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).read({ message_id });
+  const tx = await client.read({ message_id });
   return tx.result;
 }
 
@@ -108,6 +112,6 @@ export async function get(
   client: contract.Client,
   message_id: Buffer,
 ): Promise<contract.Ok<Receipt> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).get({ message_id });
+  const tx = await client.get({ message_id });
   return tx.result;
 }
