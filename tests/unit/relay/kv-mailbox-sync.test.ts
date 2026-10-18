@@ -81,4 +81,3 @@ describe("KvMailboxSyncPersistence", () => {
     expect((await persistence.listEvents(ALICE, 0, 10)).events).toHaveLength(1);
   });
 });
-

@@ -126,7 +126,11 @@ export function decodeCursor(
   }
 
   const now = options?.now ?? Date.now();
-  if (typeof payload.iat !== "number" || !Number.isInteger(payload.iat) || payload.iat > now + CLOCK_SKEW_MS) {
+  if (
+    typeof payload.iat !== "number" ||
+    !Number.isInteger(payload.iat) ||
+    payload.iat > now + CLOCK_SKEW_MS
+  ) {
     throw new ApiError(410, "cursor_expired", "Pagination cursor has expired");
   }
   const iat = payload.iat;

@@ -41,27 +41,21 @@ describe("useChangelog", () => {
   it("returns entries newest-first", () => {
     const { result } = renderHook(() => useChangelog());
 
-    expect(result.current.entries.map((entry) => entry.version))
-      .toEqual(["0.4.0", "0.3.0"]);
+    expect(result.current.entries.map((entry) => entry.version)).toEqual(["0.4.0", "0.3.0"]);
   });
 
   it("exposes entries that can be filtered by category", () => {
     const { result } = renderHook(() => useChangelog());
 
-    const security = result.current.entries.filter(
-      (entry) => entry.category === "security",
-    );
+    const security = result.current.entries.filter((entry) => entry.category === "security");
 
-    expect(security.map((entry) => entry.id))
-      .toEqual(["old-security"]);
+    expect(security.map((entry) => entry.id)).toEqual(["old-security"]);
   });
 
   it("handles an empty result after filtering", () => {
     const { result } = renderHook(() => useChangelog());
 
-    const protocol = result.current.entries.filter(
-      (entry) => entry.category === "protocol",
-    );
+    const protocol = result.current.entries.filter((entry) => entry.category === "protocol");
 
     expect(protocol).toEqual([]);
   });
@@ -89,7 +83,6 @@ describe("useChangelog", () => {
     });
 
     expect(result.current.hasUnread).toBe(false);
-    expect(localStorage.setItem)
-      .toHaveBeenCalledWith(STORAGE_KEY, "0.4.0");
+    expect(localStorage.setItem).toHaveBeenCalledWith(STORAGE_KEY, "0.4.0");
   });
 });
