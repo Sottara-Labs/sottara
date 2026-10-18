@@ -5,7 +5,7 @@ This maintainer brief gives reviewers a direct path to understand the product, i
 ## At a glance
 
 - **Project:** Hush, an open-source beta exploring private, programmable email with Stellar identity and Soroban-backed protocol actions.
-- **Repository:** [Stellar-hush/hush](https://github.com/Stellar-hush/hush)
+- **Repository:** [Sottara-Labs/sottara](https://github.com/Sottara-Labs/sottara)
 - **License:** MIT, in the repository’s root [`LICENSE`](../../LICENSE).
 - **Stage:** beta. Local and testnet development paths exist; production service readiness has not been established by the project documentation.
 - **Hosted demo:** no verified Hush demo URL is currently published in this repository. A public showcase page is present in the app, but reviewers need a deployed URL before they can try it without installing the project.
@@ -46,14 +46,14 @@ The staging pipeline only deploys after CI for the exact commit succeeds and the
 
 ## Contribution opportunities
 
-These areas are intended to produce reviewable, self-contained issues. They are themes, not statements that a matching issue is currently open; use the [live issue tracker](https://github.com/Stellar-hush/hush/issues) for current assignments.
+These areas are intended to produce reviewable, self-contained issues. They are themes, not statements that a matching issue is currently open; use the [live issue tracker](https://github.com/Sottara-Labs/sottara/issues) for current assignments.
 
 ### Initial candidate shortlist
 
-Two existing issues have been reviewed as possible future Wave tasks. They are labeled `Wave Candidate` for internal curation only; they have not been submitted to Drips, and should only be added after repository admission. The rest of the generated campaign backlog is not treated as Wave-ready until its evidence and scope are individually checked.
+Two candidate tasks have been reviewed as possible future Wave tasks. They are labeled `Wave Candidate` for internal curation only; they have not been submitted to Drips, and should only be added after repository admission. The rest of the generated campaign backlog is not treated as Wave-ready until its evidence and scope are individually checked.
 
-- [#39: Add crypto round-trip tests for Unicode and binary edge cases](https://github.com/Stellar-hush/hush/issues/39) is a bounded test task covering exact plaintext round trips, Unicode edge cases, deterministic commitments, and supported test environments.
-- [#128: Reject overlong postage amount strings before integer parsing](https://github.com/Stellar-hush/hush/issues/128) is limited to an early input-length guard and boundary tests. It must preserve the existing non-negative Soroban `i128` limit; it must not invent a product-specific postage maximum without a maintainer decision.
+- Add crypto round-trip tests for Unicode and binary edge cases: a bounded test task covering exact plaintext round trips, Unicode edge cases, deterministic commitments, and supported test environments.
+- Reject overlong postage amount strings before integer parsing: add an early input-length guard with boundary tests. It must preserve the existing non-negative Soroban `i128` limit; it must not invent a product-specific postage maximum without a maintainer decision.
 
 The automatically published batch originally put 150 unreviewed drafts in the open tracker with labels that implied reward and campaign status. To keep contributors from mistaking those drafts for approved, verified work, 146 have been closed with a note explaining how maintainers can revalidate and reopen them. Four remain open: #39 and #128 are possible future Wave candidates; #42 and #125 are labeled `needs triage` and are not Wave candidates yet.
 
@@ -118,8 +118,8 @@ Wave timing and acceptance criteria can change. The Drips app and official docum
 
 ## Links
 
-- [Hush repository](https://github.com/Stellar-hush/hush)
-- [Live issues](https://github.com/Stellar-hush/hush/issues)
+- [Hush repository](https://github.com/Sottara-Labs/sottara)
+- [Live issues](https://github.com/Sottara-Labs/sottara/issues)
 - [Stellar Wave program](https://www.drips.network/wave/stellar)
 - [Drips Wave maintainer participation](https://docs.drips.network/wave/maintainers/participating-in-a-wave/)
 - [Drips Wave terms and rules](https://docs.drips.network/wave/terms-and-rules/)

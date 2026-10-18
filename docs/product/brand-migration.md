@@ -6,7 +6,7 @@ This guide separates the new public product identity from technical identifiers 
 
 - Product name, showcase copy, metadata, icon, and design tokens now use Hush.
 - The package/project slug is `stellar-hush`.
-- The public GitHub repository is [Stellar-hush/hush](https://github.com/Stellar-hush/hush), and local `origin` points there.
+- The public GitHub repository is [Sottara-Labs/sottara](https://github.com/Sottara-Labs/sottara), and local `origin` points there.
 - The repository has an MIT license.
 - The GitHub About description and topics identify Hush as an open-source beta on Stellar.
 - Root documentation and Wave maintainer material now describe the product, contribution areas, and beta boundaries.
@@ -25,7 +25,7 @@ This guide separates the new public product identity from technical identifiers 
 
 ## Deployment status
 
-The GitHub repository has moved to `Stellar-hush/hush`, but Cloudflare configuration still uses legacy service names and custom domains. No Cloudflare account authentication or staging secrets were configured when this guide was updated, and no verified public Hush demo URL is claimed. Do not point a public About link at a placeholder or assume the main-branch CI workflow deployed a site.
+The GitHub repository has moved to `Sottara-Labs/sottara`, but Cloudflare configuration still uses legacy service names and custom domains. No Cloudflare account authentication or staging secrets were configured when this guide was updated, and no verified public Hush demo URL is claimed. Do not point a public About link at a placeholder or assume the main-branch CI workflow deployed a site.
 
 For a durable Hush-branded deployment, maintainers need to:
 
