@@ -53,12 +53,15 @@ jobs:
         \ Verify the commit exists\nif ! git cat-file -e \"$COMMIT_SHA\" 2>/dev/null;\
         \ then\n  echo \"ERROR: Commit $COMMIT_SHA does not exist\"\n  DEPLOYABLE=false\n\
         else\n  echo \"✓ Commit $COMMIT_SHA exists\"\nfi\n\n# Check CI status via\
-        \ API (with authentication)\nCI_STATUS=$(gh api \"repos/${{ github.repository\
-        \ }}/commits/$COMMIT_SHA/status\" --jq '.state' 2>/dev/null || echo \"unknown\"\
-        )\n\nif [ \"$CI_STATUS\" != \"success\" ]; then\n  echo \"ERROR: CI status\
-        \ is $CI_STATUS (expected success)\"\n  echo \"Commit must pass all CI gates\
-        \ before production deployment\"\n  DEPLOYABLE=false\nelse\n  echo \"✓ CI\
-        \ status: success\"\nfi\n\n# Scan for plaintext secrets in changed files\n\
+        \ API via check runs (GitHub Actions publishes check runs, not commit statuses)\n\
+        CI_CONCLUSION=$(gh api \"repos/${{ github.repository }}/commits/$COMMIT_SHA/check-runs\"\
+        \ \\\n  --jq '[.check_runs[] | select(.name == \"CI\")] | sort_by(.completed_at)\
+        \ | last | .conclusion // \"missing\"' 2>/dev/null || echo \"unknown\")\n\n\
+        if [ \"$CI_CONCLUSION\" != \"success\" ]; then\n  echo \"ERROR: CI check-run\
+        \ conclusion is $CI_CONCLUSION (expected success)\"\n  echo \"Commit must pass\
+        \ all CI gates before production deployment\"\n  DEPLOYABLE=false\nelse\n \
+        \ echo \"✓ CI check-run conclusion: success\"\nfi\n\n# Scan for plaintext\
+        \ secrets in changed files\n\
         echo \"Scanning commit $COMMIT_SHA for plaintext secrets...\"\nSECRETS_FOUND=false\n\
         while IFS= read -r file; do\n  if [ -f \"$file\" ]; then\n    if grep -qE\
         \ \"(password|secret|token|key|credential).*=.*['\\\"][^'\\\"${}]+['\\\"]\"\
