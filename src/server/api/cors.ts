@@ -1,8 +1,11 @@
+import type { BetaRuntimeConfig } from "../../config";
+
 export type CorsPolicy = {
   allowedOrigins: readonly string[];
   allowedMethods: readonly string[];
   allowedHeaders: readonly string[];
   allowCredentials?: boolean;
+  profile?: string;
 };
 
 const DEFAULT_ALLOWED_METHODS = [
@@ -51,17 +54,55 @@ function appendVary(headers: Headers, value: string) {
   headers.set("Vary", [...values].join(", "));
 }
 
-export function validateCorsPolicy(policy: CorsPolicy) {
+export function validateCorsPolicy(policy: CorsPolicy, isProduction = false) {
   if (policy.allowedOrigins.includes("*")) {
     if (policy.allowCredentials) {
       throw new Error("Invalid CORS policy: wildcard origins cannot be combined with credentials.");
     }
     throw new Error("Invalid CORS policy: allowedOrigins must be an explicit origin allowlist.");
   }
+  if (isProduction || policy.profile === "production") {
+    const hasDev = policy.allowedOrigins.some(
+      (origin) =>
+        origin.includes("localhost") ||
+        origin.includes("127.0.0.1") ||
+        LOCAL_DEV_ORIGINS.includes(origin as any),
+    );
+    if (hasDev) {
+      throw new Error("Invalid CORS policy: development origins are not permitted in production.");
+    }
+  }
+}
+
+export function corsPolicyFromConfig(config: BetaRuntimeConfig): CorsPolicy {
+  const isProduction = config.profile === "production";
+  const defaultOrigin = isProduction ? "https://app.betasmail.com" : config.origin.appUrl;
+
+  let allowedOrigins = config.origin.allowedOrigins;
+  if (isProduction) {
+    // Fail closed: in production, never permit development or localhost origins
+    const nonDev = allowedOrigins.filter(
+      (origin) =>
+        !origin.includes("localhost") &&
+        !origin.includes("127.0.0.1") &&
+        !LOCAL_DEV_ORIGINS.includes(origin as any),
+    );
+    allowedOrigins = nonDev.length > 0 ? nonDev : [defaultOrigin];
+  }
+
+  const policy: CorsPolicy = {
+    allowedOrigins,
+    allowedMethods: config.origin.allowedMethods,
+    allowedHeaders: config.origin.allowedHeaders,
+    allowCredentials: config.origin.allowCredentials,
+    profile: config.profile,
+  };
+  validateCorsPolicy(policy, isProduction);
+  return policy;
 }
 
 export function corsPolicyFromEnv(
-  env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = typeof process !== "undefined" ? process.env : {},
 ): CorsPolicy {
   const isProduction =
     env.STEALTH_ENV === "production" ||
@@ -69,27 +110,50 @@ export function corsPolicyFromEnv(
   const defaultOrigin = isProduction
     ? "https://app.betasmail.com"
     : (env.STEALTH_APP_URL ?? "http://localhost:3000");
+
+  let allowedOrigins: string[];
+  if (isProduction) {
+    const configured = configuredList(env.STEALTH_CORS_ALLOWED_ORIGINS, [defaultOrigin]);
+    // Fail closed: development origins are excluded in production
+    const nonDev = configured.filter(
+      (origin) =>
+        !origin.includes("localhost") &&
+        !origin.includes("127.0.0.1") &&
+        !LOCAL_DEV_ORIGINS.includes(origin as any),
+    );
+    allowedOrigins =
+      env.STEALTH_CORS_ALLOWED_ORIGINS && isProduction
+        ? [defaultOrigin]
+        : nonDev.length > 0
+          ? nonDev
+          : [defaultOrigin];
+  } else {
+    allowedOrigins = [
+      ...new Set([
+        ...configuredList(env.STEALTH_CORS_ALLOWED_ORIGINS, [defaultOrigin]),
+        ...LOCAL_DEV_ORIGINS,
+      ]),
+    ];
+  }
+
   const policy: CorsPolicy = {
-    allowedOrigins: isProduction
-      ? [defaultOrigin]
-      : [
-          ...new Set([
-            ...configuredList(env.STEALTH_CORS_ALLOWED_ORIGINS, [defaultOrigin]),
-            ...LOCAL_DEV_ORIGINS,
-          ]),
-        ],
+    allowedOrigins,
     allowedMethods: configuredList(env.STEALTH_CORS_ALLOWED_METHODS, DEFAULT_ALLOWED_METHODS),
     allowedHeaders: configuredList(env.STEALTH_CORS_ALLOWED_HEADERS, DEFAULT_ALLOWED_HEADERS),
     allowCredentials: env.STEALTH_CORS_ALLOW_CREDENTIALS?.toLowerCase() !== "false",
+    profile: isProduction ? "production" : (env.STEALTH_ENV ?? env.NODE_ENV ?? "development"),
   };
-  validateCorsPolicy(policy);
+  validateCorsPolicy(policy, isProduction);
   return policy;
 }
 
 const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function isExplicitDevelopmentProfile(): boolean {
-  const profile = process.env.STEALTH_ENV ?? process.env.SOTTARA_ENV ?? process.env.NODE_ENV;
+  const profile =
+    typeof process !== "undefined"
+      ? (process.env.STEALTH_ENV ?? process.env.SOTTARA_ENV ?? process.env.NODE_ENV)
+      : undefined;
   return profile === "development" || profile === "dev";
 }
 
@@ -106,12 +170,25 @@ function requestOrigin(request: Request): string | null {
   }
 }
 
-export function csrfEarlyResponse(request: Request, policy: CorsPolicy): Response | undefined {
+export function csrfEarlyResponse(
+  request: Request,
+  policy: CorsPolicy,
+  profile?: string,
+): Response | undefined {
   if (!UNSAFE_METHODS.has(request.method.toUpperCase())) return undefined;
   if (!request.headers.get("cookie")) return undefined;
+
+  const effectiveProfile =
+    profile ??
+    policy.profile ??
+    (typeof process !== "undefined"
+      ? (process.env.STEALTH_ENV ?? process.env.SOTTARA_ENV ?? process.env.NODE_ENV)
+      : undefined);
+
   // Localhost entries are present in non-production policies for browser
   // development. They must not disable CSRF protection for preview or test.
-  if (isExplicitDevelopmentProfile()) return undefined;
+  const isDev = effectiveProfile === "development" || effectiveProfile === "dev";
+  if (isDev) return undefined;
 
   const origin = requestOrigin(request);
   if (origin && policy.allowedOrigins.includes(origin)) return undefined;
