@@ -87,7 +87,7 @@ export interface BodyLimitOptions {
   /** Select an approved category from {@link BODY_LIMIT_CATEGORIES}. */
   category?: BodyLimitCategory;
   /** Select the category configured for a stable route key. */
-  route?: RouteBodyLimitKey;
+  route?: RouteBodyLimitKey | string;
 }
 
 /**
@@ -95,7 +95,8 @@ export interface BodyLimitOptions {
  *
  * Accepts a raw byte number (legacy call sites), a category name, a route key,
  * or nothing (the default category). Enforcement can never be silently disabled:
- * a non-finite or non-positive numeric limit is rejected.
+ * a non-finite or non-positive numeric limit is rejected, and an undeclared
+ * route key falls back to the default category rather than disabling enforcement.
  */
 export function resolveBodyLimit(selector?: number | BodyLimitCategory | BodyLimitOptions): number {
   if (selector === undefined) return DEFAULT_MAX_BODY_BYTES;
@@ -114,7 +115,18 @@ export function resolveBodyLimit(selector?: number | BodyLimitCategory | BodyLim
   }
 
   if (selector.route !== undefined) {
-    return BODY_LIMIT_CATEGORIES[ROUTE_BODY_LIMITS[selector.route]];
+    const category = (
+      ROUTE_BODY_LIMITS as Record<string, BodyLimitCategory | undefined>
+    )[selector.route];
+    if (category === undefined) {
+      // Undeclared route key: fall back to the default cap so enforcement is
+      // never silently disabled. Warn so the missing registration is auditable.
+      console.warn(
+        `[request] Undeclared route key "${selector.route}" in body-limit selector; falling back to default body limit (${DEFAULT_MAX_BODY_BYTES} bytes)`,
+      );
+      return DEFAULT_MAX_BODY_BYTES;
+    }
+    return BODY_LIMIT_CATEGORIES[category];
   }
   if (selector.category !== undefined) {
     return BODY_LIMIT_CATEGORIES[selector.category];
@@ -206,7 +218,7 @@ const DEFAULT_MAX_QUERY_VALUE_LENGTH = 1024;
 
 /**
  * Control characters rejected in parameter names and values: C0 controls
- * (U+0000–U+001F), DEL (U+007F), and C1 controls (U+0080–U+009F). These never
+ * (U+0000-U-001F), DEL (U+007F), and C1 controls (U+0080-U+009F). These never
  * appear legitimately in a decoded query parameter and are common vectors for
  * log injection, header smuggling, and parser confusion.
  */
@@ -327,7 +339,5 @@ export function parseSearchParams<T>(
 
 export const paginationSchema = z.object({
   cursor: z.string().trim().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 });
-
-export { DEFAULT_MAX_BODY_BYTES, DEFAULT_BODY_LIMIT_CATEGORY };
