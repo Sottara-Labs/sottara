@@ -157,6 +157,85 @@ describe("BETA-091: verification mail queue", () => {
     expect(JSON.stringify(updated)).not.toContain("tok_bounce_fixture");
     expect(queue.hasRetryCallback("vm_evt_1")).toBe(false);
   });
+
+  it("calling attempt twice on a failed message leaves exactly one DLQ entry and never duplicates ids", async () => {
+    const queue = new VerificationMailQueue({
+      defaultMaxAttempts: 1,
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+
+    const messageId = "vm_dlq_dedup";
+    queue.enqueue(
+      {
+        messageId,
+        purpose: "email_verification",
+        recipientEmail: "fail@stealth.test",
+      },
+      async () => {
+        throw new SmtpError("550 Mailbox does not exist", { replyCode: 550 });
+      },
+    );
+
+    const first = await queue.attempt(messageId);
+    expect(first.state).toBe("failed");
+    expect(queue.deadLetterList()).toHaveLength(1);
+    expect(queue.deadLetterList()[0].messageId).toBe(messageId);
+
+    // Second attempt on the terminal failed/dead-lettered record
+    const second = await queue.attempt(messageId);
+    expect(second.state).toBe("failed");
+    expect(second.attempts).toBe(1);
+
+    // DLQ must still have exactly one entry, no duplicates
+    const dlq = queue.deadLetterList();
+    expect(dlq).toHaveLength(1);
+    expect(dlq.filter((row) => row.messageId === messageId)).toHaveLength(1);
+  });
+
+  it("resets attempts and re-sends when requeue is called", async () => {
+    const queue = new VerificationMailQueue({
+      defaultMaxAttempts: 1,
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+
+    const messageId = "vm_requeue_test";
+    let attemptsCount = 0;
+    queue.enqueue(
+      {
+        messageId,
+        purpose: "email_verification",
+        recipientEmail: "retry@stealth.test",
+      },
+      async () => {
+        attemptsCount += 1;
+        throw new Error("Temporary system outage");
+      },
+    );
+
+    const first = await queue.attempt(messageId);
+    expect(first.state).toBe("failed");
+    expect(first.attempts).toBe(1);
+    expect(queue.deadLetterList()).toHaveLength(1);
+
+    // Operator requeues with a new working send function
+    let resendCalled = false;
+    const requeued = queue.requeue(messageId, async () => {
+      resendCalled = true;
+      return { accepted: true, providerRef: "requeued_mta_ok" };
+    });
+
+    expect(requeued.state).toBe("queued");
+    expect(requeued.attempts).toBe(0);
+    expect(requeued.deadLetteredAt).toBeUndefined();
+    expect(queue.deadLetterList()).toHaveLength(0);
+
+    // Attempting again should successfully send
+    const second = await queue.attempt(messageId);
+    expect(second.state).toBe("sent");
+    expect(second.attempts).toBe(1);
+    expect(resendCalled).toBe(true);
+    expect(queue.deadLetterList()).toHaveLength(0);
+  });
 });
 
 describe("BETA-091: orchestrator + invite fallback", () => {
