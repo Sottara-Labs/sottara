@@ -117,6 +117,60 @@ describe("identity migration runner", () => {
       expect(report.ok).toBe(false);
       expect(await storage.get("user:id:u_1")).toEqual(seeded);
     });
+
+    it("attributes a precondition hook failure to the failing family and leaves others at failed: 0", async () => {
+      const userFamily = v2UserFamily();
+      const sessionBase = identityRecordFamilies.find((f) => f.name === "session")!;
+      const brokenSessionFamily: IdentityRecordFamily = {
+        ...sessionBase,
+        preconditions: async () => ["session store unavailable"],
+      };
+
+      const storage = new InMemoryMigrationStorage();
+      storage.seed("user:id:u_1", wrapEnvelope(validUser("u_1"), 1));
+      storage.seed("session:s_1", wrapEnvelope(validSession("s_1"), 1));
+
+      const report = await forward(storage, [userFamily, brokenSessionFamily], {
+        approval: "approved",
+      });
+
+      expect(report.ok).toBe(false);
+      expect(report.failureKind).toBe("precondition_failed");
+      expect(report.preconditions).toEqual(["session: session store unavailable"]);
+
+      const sessionReport = report.families.find((f) => f.family === "session")!;
+      expect(sessionReport.failed).toBe(1);
+      expect(sessionReport.errors).toContain("session: session store unavailable");
+
+      const userReport = report.families.find((f) => f.family === "user")!;
+      expect(userReport.failed).toBe(0);
+      expect(userReport.errors).toEqual([]);
+    });
+
+    it("attributes an incompatible schema version preflight failure to the failing family only", async () => {
+      const userFamily = v2UserFamily();
+      const sessionBase = identityRecordFamilies.find((f) => f.name === "session")!;
+
+      const storage = new InMemoryMigrationStorage();
+      storage.seed("user:id:u_1", wrapEnvelope(validUser("u_1"), 1));
+      storage.seed("session:s_1", wrapEnvelope(validSession("s_1"), 99));
+
+      const report = await forward(storage, [userFamily, sessionBase], {
+        approval: "approved",
+      });
+
+      expect(report.ok).toBe(false);
+      expect(report.failureKind).toBe("precondition_failed");
+      expect(report.preconditions?.[0]).toContain("session: incompatible schema version 99");
+
+      const sessionReport = report.families.find((f) => f.family === "session")!;
+      expect(sessionReport.failed).toBe(1);
+      expect(sessionReport.errors[0]).toContain("session: incompatible schema version 99");
+
+      const userReport = report.families.find((f) => f.family === "user")!;
+      expect(userReport.failed).toBe(0);
+      expect(userReport.errors).toEqual([]);
+    });
   });
 
   describe("rollback", () => {
@@ -172,6 +226,41 @@ describe("identity migration runner", () => {
       expect(user.failed).toBe(1);
       expect(user.errors[0]).toContain("missing backward migration step");
       expect(report.ok).toBe(false);
+    });
+
+    it("attributes a rollback preflight failure to the failing family and leaves others at failed: 0", async () => {
+      const userFamily = v2UserFamily();
+      const sessionBase = identityRecordFamilies.find((f) => f.name === "session")!;
+      const brokenSessionFamily: IdentityRecordFamily = {
+        ...sessionBase,
+        currentVersion: 2,
+        backward: {}, // missing backward step for v2 -> v1
+      };
+
+      const storage = new InMemoryMigrationStorage();
+      storage.seed("user:id:u_1", wrapEnvelope({ ...validUser("u_1"), displayName: "Al" }, 2));
+      storage.seed("session:s_1", wrapEnvelope(validSession("s_1"), 2));
+
+      const report = await rollback(storage, [userFamily, brokenSessionFamily], {
+        targetVersion: 1,
+        approval: "approved",
+      });
+
+      expect(report.ok).toBe(false);
+      expect(report.failureKind).toBe("rollback_blocked");
+      expect(report.preconditions?.[0]).toContain(
+        "session: rollback blocked: missing backward migration step",
+      );
+
+      const sessionReport = report.families.find((f) => f.family === "session")!;
+      expect(sessionReport.failed).toBe(1);
+      expect(sessionReport.errors[0]).toContain(
+        "session: rollback blocked: missing backward migration step",
+      );
+
+      const userReport = report.families.find((f) => f.family === "user")!;
+      expect(userReport.failed).toBe(0);
+      expect(userReport.errors).toEqual([]);
     });
   });
 

@@ -59,19 +59,25 @@ function baseReport(command: MigrationCommand, families: readonly IdentityRecord
   };
 }
 
+interface PreflightFailure {
+  family?: string;
+  message: string;
+}
+
 function failReport(
   report: MigrationReport,
-  families: readonly IdentityRecordFamily[],
-  message: string,
+  failure: PreflightFailure,
   failureKind: "precondition_failed" | "rollback_blocked" | "compatibility_failed",
 ): MigrationReport {
   report.ok = false;
   report.failureKind = failureKind;
-  report.preconditions = [message];
-  for (const family of families) {
-    const familyReport = report.families.find((item) => item.family === family.name)!;
-    familyReport.failed += 1;
-    familyReport.errors.push(message);
+  report.preconditions = [failure.message];
+  if (failure.family) {
+    const familyReport = report.families.find((item) => item.family === failure.family);
+    if (familyReport) {
+      familyReport.failed += 1;
+      familyReport.errors.push(failure.message);
+    }
   }
   return report;
 }
@@ -90,35 +96,48 @@ async function preflight(
   families: readonly IdentityRecordFamily[],
   options: MigrationRunOptions,
   command: "forward" | "rollback",
-): Promise<string | null> {
+): Promise<PreflightFailure | null> {
   const expected = options.expectedRegistryChecksum;
   const actual = registryChecksum(families);
   if (expected && expected !== actual)
-    return "migration registry checksum does not match reviewed manifest";
+    return { message: "migration registry checksum does not match reviewed manifest" };
   if (options.approval !== "approved")
-    return "operator approval is required for mutating migrations";
+    return { message: "operator approval is required for mutating migrations" };
 
   for (const family of families) {
     const failures = (await family.preconditions?.(storage)) ?? [];
-    if (failures.length) return `${family.name}: ${failures.join(", ")}`;
+    if (failures.length)
+      return { family: family.name, message: `${family.name}: ${failures.join(", ")}` };
     const keys = await storage.listKeys(family.keyPrefix);
     for (const key of keys) {
       const raw = await storage.get(key);
       if (raw === null || raw === undefined)
-        return `${family.name}: missing value for ${fingerprintKey(key)}`;
+        return {
+          family: family.name,
+          message: `${family.name}: missing value for ${fingerprintKey(key)}`,
+        };
       const { version } = readEnvelope(raw);
       if (version > family.currentVersion) {
-        return `${family.name}: incompatible schema version ${version} for ${fingerprintKey(key)}`;
+        return {
+          family: family.name,
+          message: `${family.name}: incompatible schema version ${version} for ${fingerprintKey(key)}`,
+        };
       }
       if (command === "forward" && version < family.currentVersion && !applyForward(family, raw)) {
-        return `${family.name}: missing forward migration step for ${fingerprintKey(key)}`;
+        return {
+          family: family.name,
+          message: `${family.name}: missing forward migration step for ${fingerprintKey(key)}`,
+        };
       }
       if (
         command === "rollback" &&
         version > (options.targetVersion ?? 0) &&
         !applyBackward(family, raw, options.targetVersion ?? 0)
       ) {
-        return `${family.name}: rollback blocked: missing backward migration step for ${fingerprintKey(key)}`;
+        return {
+          family: family.name,
+          message: `${family.name}: rollback blocked: missing backward migration step for ${fingerprintKey(key)}`,
+        };
       }
     }
   }
@@ -165,7 +184,7 @@ export async function forward(
 ): Promise<MigrationReport> {
   const report = baseReport("forward", families);
   const preflightError = await preflight(storage, families, options, "forward");
-  if (preflightError) return failReport(report, families, preflightError, "precondition_failed");
+  if (preflightError) return failReport(report, preflightError, "precondition_failed");
   for (const family of families) {
     const familyReport = report.families.find((f) => f.family === family.name)!;
     const keys = await storage.listKeys(family.keyPrefix);
@@ -228,7 +247,7 @@ export async function rollback(
 
   const report = baseReport("rollback", families);
   const preflightError = await preflight(storage, families, options, "rollback");
-  if (preflightError) return failReport(report, families, preflightError, "rollback_blocked");
+  if (preflightError) return failReport(report, preflightError, "rollback_blocked");
   for (const family of families) {
     const familyReport = report.families.find((f) => f.family === family.name)!;
     const keys = await storage.listKeys(family.keyPrefix);
