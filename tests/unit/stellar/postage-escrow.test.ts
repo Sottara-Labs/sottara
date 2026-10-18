@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { Keypair } from "@stellar/stellar-sdk";
+import { createHash } from "node:crypto";
+import { Account, Asset, Keypair, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   PostageEscrowAdapter,
   classifyRetry,
@@ -252,6 +253,7 @@ describe("PostageEscrowAdapter", () => {
 
     const confirmation = await (adapter as any).confirm("tx-hash", "a".repeat(64));
     expect(confirmation).toEqual({
+      state: "confirmed",
       postage,
       confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
     });
@@ -283,5 +285,85 @@ describe("PostageEscrowAdapter", () => {
       postage,
       confirmation: { txHash: "tx-hash", ledger: 42, createdAtLedger: 42 },
     });
+  });
+
+  function paymentTransaction() {
+    const passphrase = "Test SDF Network ; September 2015";
+    return new TransactionBuilder(new Account(Keypair.random().publicKey(), "0"), {
+      fee: "100",
+      networkPassphrase: passphrase,
+    })
+      .addOperation(
+        Operation.payment({
+          destination: Keypair.random().publicKey(),
+          asset: Asset.native(),
+          amount: "1",
+        }),
+      )
+      .setTimeout(30)
+      .build();
+  }
+
+  it("hashes the built transaction, not the envelope XDR (#326)", () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    const tx = paymentTransaction();
+
+    const expected = tx.hash().toString("hex");
+    expect((adapter as any).hashTx(tx)).toBe(expected);
+    expect(expected).not.toBe(createHash("sha256").update(tx.toXDR()).digest("hex"));
+  });
+
+  it("reports an unlanded transaction as pending instead of successful (#326)", async () => {
+    const source = Keypair.random();
+    const built = paymentTransaction();
+    const signedXdr = built.toXDR();
+
+    const adapter = new PostageEscrowAdapter({
+      config: makeConfig(),
+      managedWallet: {
+        signTransaction: vi.fn().mockResolvedValue(signedXdr),
+      } as never,
+    });
+    (adapter as any).makeClient = () => ({});
+    (adapter as any).makeRpcServer = () => ({
+      sendTransaction: vi.fn().mockResolvedValue({ status: "PENDING", hash: "rpc-hash-ignored" }),
+      getTransaction: vi.fn().mockResolvedValue({ status: "NOT_FOUND" }),
+    });
+    (adapter as any).sleep = vi.fn();
+
+    const result = await (adapter as any).runOperation(
+      "submit",
+      { type: "postage", senderAddress: source.publicKey(), amountStroops: "1000" },
+      source.publicKey(),
+      "a".repeat(64),
+      async () => ({ transactionXdr: signedXdr }),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.chainStatus).toBe("submitted");
+    expect(result.retryClassification).toBe("unknown");
+    expect(result.txHash).toBe(built.hash().toString("hex"));
+  });
+
+  it("treats an unfindable hash as pending rather than safe", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    (adapter as any).makeRpcServer = () => ({
+      getTransaction: vi.fn().mockResolvedValue({ status: "NOT_FOUND" }),
+    });
+    (adapter as any).sleep = vi.fn();
+
+    const result = await (adapter as any).confirm("tx-hash", "a".repeat(64), 3, 0);
+    expect(result).toEqual({ state: "pending" });
+  });
+
+  it("reports a ledger-rejected transaction as failed", async () => {
+    const adapter = new PostageEscrowAdapter({ config: makeConfig() });
+    (adapter as any).makeRpcServer = () => ({
+      getTransaction: vi.fn().mockResolvedValue({ status: "FAILED" }),
+    });
+    (adapter as any).sleep = vi.fn();
+
+    const result = await (adapter as any).confirm("tx-hash", "a".repeat(64), 3, 0);
+    expect(result).toEqual({ state: "failed" });
   });
 });

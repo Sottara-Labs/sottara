@@ -1,5 +1,11 @@
-import { rpc, TransactionBuilder, Networks, Address } from "@stellar/stellar-sdk";
-import { createHash } from "node:crypto";
+import {
+  rpc,
+  TransactionBuilder,
+  Networks,
+  Address,
+  type FeeBumpTransaction,
+  type Transaction,
+} from "@stellar/stellar-sdk";
 import type { BetaRuntimeConfig } from "../../config/schema";
 import type { Postage, PostageChainStatus, PostageStatus } from "../../server/api/domain";
 import {
@@ -400,21 +406,15 @@ export class PostageEscrowAdapter {
       );
 
       const server = this.makeRpcServer();
-      const submitRes = await server.sendTransaction(
-        TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase) as any,
-      );
-
-      let txHash: string;
-      if ((submitRes as any).hash) {
-        txHash = (submitRes as any).hash;
-      } else {
-        const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
-        txHash = this.hashTx((tx as any).toXDR());
-      }
+      const tx = TransactionBuilder.fromXDR(signedXdr, this.networkPassphrase);
+      const submitRes = await server.sendTransaction(tx as any);
+      // The ledger indexes transactions by `Transaction.hash()`, not a hash of
+      // the envelope XDR, so derive the hash from the built transaction itself.
+      const txHash = this.hashTx(tx);
 
       if ((submitRes as any).status === "DUPLICATE") {
         const existing = await this.confirm(txHash, messageId);
-        if (existing) {
+        if (existing.state === "confirmed") {
           return {
             success: true,
             postage: existing.postage,
@@ -439,11 +439,22 @@ export class PostageEscrowAdapter {
       }
 
       const confirmed = await this.confirm(txHash, messageId);
-      if (!confirmed) {
+      if (confirmed.state === "failed") {
+        return {
+          success: false,
+          chainStatus: "failed",
+          retryClassification: "unknown",
+          lastError: "Transaction failed on-ledger",
+          txHash,
+        } as any;
+      }
+      if (confirmed.state === "pending") {
+        // The ledger has not indexed this hash (yet). Report it as pending so a
+        // transaction that never landed cannot be mistaken for a success.
         return {
           success: false,
           chainStatus: "submitted",
-          retryClassification: "safe",
+          retryClassification: "unknown",
           txHash,
         } as any;
       }
@@ -488,8 +499,14 @@ export class PostageEscrowAdapter {
     }
   }
 
-  private hashTx(xdr: string): string {
-    return createHash("sha256").update(xdr).digest("hex");
+  /**
+   * The Stellar transaction hash the ledger actually indexes: SHA-256 of the
+   * network-id-tagged signature payload, as computed by `Transaction.hash()`.
+   * Hashing the envelope XDR (the previous behaviour) produced a value the
+   * network never indexes, so confirmation polling could never find it.
+   */
+  private hashTx(tx: Transaction | FeeBumpTransaction): string {
+    return tx.hash().toString("hex");
   }
 
   private async confirm(
@@ -497,7 +514,11 @@ export class PostageEscrowAdapter {
     messageId: string,
     maxAttempts = 15,
     sleepMs = 1500,
-  ): Promise<{ postage?: ChainPostage; confirmation: ChainConfirmation } | null> {
+  ): Promise<
+    | { state: "confirmed"; postage?: ChainPostage; confirmation: ChainConfirmation }
+    | { state: "failed" }
+    | { state: "pending" }
+  > {
     const server = this.makeRpcServer();
     for (let i = 0; i < maxAttempts; i++) {
       try {
@@ -509,6 +530,7 @@ export class PostageEscrowAdapter {
           // extractPostageFromResult stub always returned undefined.)
           const postage = (await this.readOnChainPostage(messageId)) ?? undefined;
           return {
+            state: "confirmed",
             postage,
             confirmation: {
               txHash,
@@ -518,14 +540,16 @@ export class PostageEscrowAdapter {
           };
         }
         if (status === "FAILED") {
-          return null;
+          return { state: "failed" };
         }
+        // Any other status (notably NOT_FOUND) means the ledger has not indexed
+        // this hash yet. Keep polling: an unfindable hash is pending, never safe.
       } catch {
         // Ignore transient RPC errors while polling for confirmation.
       }
       await this.sleep(sleepMs);
     }
-    return null;
+    return { state: "pending" };
   }
 
   private sleep(ms: number): Promise<void> {
