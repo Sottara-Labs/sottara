@@ -83,7 +83,7 @@ jobs:
     name: Client Checks
     runs-on: ubuntu-latest
     env:
-      NODE_OPTIONS: --localstorage-file=${{ runner.temp }}/sottara-vitest-localstorage.sqlite
+      NODE_OPTIONS: --localstorage-file=${{ github.workspace }}/sottara-vitest-localstorage.sqlite
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       with:
