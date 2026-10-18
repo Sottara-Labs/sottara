@@ -157,6 +157,89 @@ describe("BETA-091: verification mail queue", () => {
     expect(JSON.stringify(updated)).not.toContain("tok_bounce_fixture");
     expect(queue.hasRetryCallback("vm_evt_1")).toBe(false);
   });
+
+  it("dead-letters immediately on 550 even with rate-limited text", async () => {
+    const queue = new VerificationMailQueue({
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+    const messageId = "vm_550_rate_limit";
+    queue.enqueue(
+      {
+        messageId,
+        purpose: "email_verification",
+        recipientEmail: "test@stealth.test",
+      },
+      async () => {
+        throw new SmtpError("550 5.7.1 rate limited sender blocked", {
+          replyCode: 550,
+          command: "RCPT TO",
+        });
+      },
+    );
+
+    const record = await queue.attempt(messageId);
+    expect(record.state).toBe("hard_bounce");
+    expect(record.reasonClass).toBe("hard_bounce");
+    expect(record.deadLetteredAt).toBeDefined();
+    expect(queue.hasRetryCallback(messageId)).toBe(false);
+    expect(queue.deadLetterList().some((row) => row.messageId === messageId)).toBe(true);
+  });
+
+  it("retries with backoff on 451 without special substrings", async () => {
+    const queue = new VerificationMailQueue({
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+    const messageId = "vm_451_retry";
+    queue.enqueue(
+      {
+        messageId,
+        purpose: "email_verification",
+        recipientEmail: "test@stealth.test",
+      },
+      async () => {
+        throw new SmtpError("451 4.3.0 internal server error", {
+          replyCode: 451,
+          command: "DATA",
+        });
+      },
+    );
+
+    const record = await queue.attempt(messageId);
+    expect(record.state).toBe("deferred");
+    expect(record.reasonClass).toBe("transient_mailbox");
+    expect(record.deadLetteredAt).toBeUndefined();
+    expect(record.nextAttemptAt).toBeDefined();
+    expect(queue.hasRetryCallback(messageId)).toBe(true);
+  });
+
+  it("handles non-SMTP errors using string heuristics and defaults to unknown", async () => {
+    const queue = new VerificationMailQueue({
+      defaultMaxAttempts: 3,
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+    const unkId = "vm_unk_err";
+    queue.enqueue(
+      { messageId: unkId, purpose: "email_verification", recipientEmail: "a@b.com" },
+      async () => {
+        throw new TypeError("unexpected null pointer in send callback");
+      },
+    );
+    const unkRecord = await queue.attempt(unkId);
+    expect(unkRecord.state).toBe("deferred");
+    expect(unkRecord.reasonClass).toBe("unknown");
+    expect(queue.hasRetryCallback(unkId)).toBe(true);
+
+    const netId = "vm_net_err";
+    queue.enqueue(
+      { messageId: netId, purpose: "email_verification", recipientEmail: "a@b.com" },
+      async () => {
+        throw new Error("connect ECONNREFUSED 127.0.0.1:587");
+      },
+    );
+    const netRecord = await queue.attempt(netId);
+    expect(netRecord.state).toBe("deferred");
+    expect(netRecord.reasonClass).toBe("transient_network");
+  });
 });
 
 describe("BETA-091: orchestrator + invite fallback", () => {
