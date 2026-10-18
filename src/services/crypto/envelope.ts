@@ -14,6 +14,7 @@
 import { clearSecret, digestHex, sharedPool, toBase64, toHex } from "./memory";
 import { validateEnvelopeInput } from "./limits";
 import { getCryptoTestVectors } from "./testing";
+import { getRandomValues as platformGetRandomValues } from "./random";
 import { createCommitment } from "./commitment";
 import { recordCryptoTelemetry, type CryptoResultCode } from "./telemetry";
 import { getDefaultSuite, getDefaultVersion } from "./suites";
@@ -226,7 +227,7 @@ export async function sealEnvelope(input: SealEnvelopeInput): Promise<SealedEnve
     if (getRandomValues) {
       getRandomValues(iv);
     } else {
-      crypto.getRandomValues(iv);
+      platformGetRandomValues(iv);
     }
 
     const plaintext = new TextEncoder().encode(body);
@@ -263,7 +264,11 @@ export async function sealEnvelope(input: SealEnvelopeInput): Promise<SealedEnve
         const dataBytes = new Uint8Array(attachment.data);
         const attIv = sharedPool.acquire(12);
         const attIvView = new Uint8Array(attIv, 0, 12);
-        crypto.getRandomValues(attIvView);
+        if (getRandomValues) {
+          getRandomValues(attIvView);
+        } else {
+          platformGetRandomValues(attIvView);
+        }
 
         const attCiphertext = new Uint8Array(
           await crypto.subtle.encrypt(
