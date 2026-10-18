@@ -24,7 +24,12 @@
 ```typescript
 // From errors.ts normalizeApiError()
 if (error instanceof ZodError) {
-  return new ApiError(422, "validation_error", "Request validation failed", error.flatten());
+  return new ApiError(
+    422,
+    "validation_error",
+    "Request validation failed",
+    normalizeValidationError(error),
+  );
 }
 ```
 

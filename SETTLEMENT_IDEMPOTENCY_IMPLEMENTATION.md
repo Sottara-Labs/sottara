@@ -22,17 +22,32 @@
 **Evidence**:
 
 ```typescript
-// From settle.ts
+// From settle.ts via withIdempotency() (@/server/api/idempotency-service)
 const rawIdempotencyKey = request.headers.get("x-idempotency-key");
-if (rawIdempotencyKey) {
-  const existing = await checkIdempotency(repository, current.recipient, rawIdempotencyKey);
-  if (existing) {
-    return apiSuccess(request, existing.body, {
-      status: existing.status,
-      headers: { "x-idempotency-replayed": "true" },
-    });
-  }
-}
+const settle = async () => {
+  const postage = await resolvePostage(context, messageId, "settled");
+  return { status: 200, body: postage };
+};
+
+const result = rawIdempotencyKey
+  ? await withIdempotency(
+      repository,
+      {
+        actor: current.recipient,
+        method: request.method,
+        route: "POST /postage/{messageId}/settle",
+        rawKey: rawIdempotencyKey,
+      },
+      { messageId },
+      settle,
+      { cacheableErrorStatuses: [409] },
+    )
+  : { ...(await settle()), replayed: false };
+
+return apiSuccess(request, result.body, {
+  status: result.status,
+  ...(result.replayed ? { headers: { "x-idempotency-replayed": "true" } } : {}),
+});
 ```
 
 ### ✅ Tests cover retry-after-success and retry-after-terminal-state cases

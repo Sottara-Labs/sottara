@@ -20,10 +20,12 @@ Created 5-state system for recipient verification:
 
 Supports all required formats:
 
-- Hush addresses (S-prefix, 56 chars)
 - Stellar G-addresses (G-prefix, 56 chars)
 - Federation addresses (name\*domain)
+- Hush email format (name@stealth.me)
 - Contact aliases (alphanumeric, hyphen, underscore, dot)
+
+S-prefixed secret keys are rejected before the alias fallback; they are never valid recipient addresses.
 
 ### 3. **Async Resolution Engine** ✓
 
