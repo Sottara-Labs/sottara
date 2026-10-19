@@ -2,9 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { requireActor, requireActorMatches } from "@/server/api/actor";
 import { getApiContext } from "@/server/api/context";
-import { mailboxQueueQuerySchema } from "@/server/api/domain";
+import { mailboxQueueWQuerySchema } from "@/server/api/domain";
 import { envelopeToMailboxDescriptor } from "@/server/api/mailbox-live";
-import { encodeCursor, decodeCursor } from "@/server/api/pagination";
+import { encodeCursor, decodeCursor, DEFAULT_CURSOR_MAX_AGE_MS } from "@/server/api/pagination";
 import { parseSearchParams } from "@/server/api/request";
 import { apiSuccess, handleApiRequest } from "@/server/api/response";
 
@@ -24,7 +24,12 @@ export const Route = createFileRoute("/api/v1/mailbox/queue")({
 
           let afterKey: string | undefined;
           if (query.cursor) {
-            const decoded = decodeCursor(query.cursor, actor, "mailbox_queue");
+            const decoded = decodeCursor(
+              query.cursor,
+              actor,
+              "mailbox_queue",
+              DEFAULT_CURSOR_MAX_AGE_MS,
+            );
             afterKey = decoded.continuationKey;
           }
 
