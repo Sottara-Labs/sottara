@@ -104,41 +104,6 @@ jobs:
         name: gate-pr-preview
         path: gate-result-pr-preview.json
         retention-days: 7
-    - name: Build client
-      timeout-minutes: 15
-      run: bun run build
-    - name: Deploy preview (non-fork only)
-      if: env.IS_FORK != 'true' && env.CLOUDFLARE_API_TOKEN != ''
-      run: "# Deploy using the Vite-compiled worker output\n# The Vite plugin writes\
-        \ dist/server/wrangler.json with the compiled worker\nnpx wrangler@4.105.0\
-        \ deploy \\\n  --config dist/server/wrangler.json \\\n  --name \"stealth-mail-pr-${{\
-        \ github.event.pull_request.number }}\"\n"
-      env:
-        CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-    - name: Comment PR with preview status
-      if: success()
-      uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
-      with:
-        script: "const isFork = '${{ env.IS_FORK }}' === 'true';\nconst hasToken =\
-          \ '${{ secrets.CLOUDFLARE_API_TOKEN }}' !== '';\nlet body;\nif (isFork)\
-          \ {\n  body = `\U0001F680 **PR Build Validation**\\n\\n✅ Client build succeeded!\\\
-          n\\n> ℹ️ Preview deployment skipped — this is a fork PR without Cloudflare\
-          \ credentials.`;\n} else if (!hasToken) {\n  body = `\U0001F680 **PR Build\
-          \ Validation**\\n\\n✅ Client build succeeded!\\n\\n> ℹ️ Preview deployment\
-          \ skipped — Cloudflare preview environment not configured.`;\n} else {\n\
-          \  const previewUrl = `https://stealth-mail-pr-${{ github.event.pull_request.number\
-          \ }}.${process.env.CLOUDFLARE_SUBDOMAIN || 'workers.dev'}`;\n  body = `\U0001F680\
-          \ **Preview Deployment**\\n\\n✅ Preview environment deployed successfully!\\\
-          n\\n**URL:** ${previewUrl}\\n\\n**Commit:** \\`${context.sha.slice(0, 7)}\\\
-          `\\n\\n> ⚠️ This preview runs WITHOUT production secrets. Some features\
-          \ may be limited.`;\n}\ntry {\n  await github.rest.issues.createComment({\n\
-          \    issue_number: context.issue.number,\n    owner: context.repo.owner,\n\
-          \    repo: context.repo.repo,\n    body: body\n  });\n} catch (err) {\n\
-          \  // Fork PRs get a read-only token for the base repo, so commenting is\n\
-          \  // not always permitted. This is best-effort and must not fail the job.\n\
-          \  console.log(`Skipping preview comment (not permitted): ${err.message}`);\n\
-          }\n"
     timeout-minutes: 20
   preview-teardown:
     name: Teardown Preview
