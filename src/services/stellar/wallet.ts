@@ -1,13 +1,15 @@
-/**
+/*
  * Wallet authorization + signing via Freighter (@stellar/freighter-api v6).
  *
  * The canonical envelope payload is signed with the user's Stellar key
- * (Ed25519). If the user declines the wallet prompt we throw
- * WalletRejectedError so the caller can preserve the draft.
+ * (Edd25519). If the user declines the wallet prompt we throw WalletRejectedError
+ * so the caller can preserve the draft.
  *
  * The import is intentionally dynamic so that the Freighter bundle is excluded
  * from the initial SSR/client chunk and only loaded on first wallet call.
  */
+import { config } from "../../config";
+
 let _freighterPkg: typeof import("@stellar/freighter-api") | null = null;
 async function loadFreighter() {
   if (!_freighterPkg) {
@@ -28,6 +30,13 @@ export class WalletRejectedError extends Error {
   constructor(message = "Wallet authorization was declined") {
     super(message);
     this.name = "WalletRejectedError";
+  }
+}
+
+export class WalletNetworkMismatchError extends Error {
+  constructor(message = "Wallet is connected to a different network") {
+    super(message);
+    this.name = "WalletNetworkMismatchError";
   }
 }
 
@@ -77,6 +86,8 @@ type FreighterApi = {
   isConnected: FreighterPkg["isConnected"];
   requestAccess: FreighterPkg["requestAccess"];
   signMessage: FreighterPkg["signMessage"];
+  getNetworkDetails?: () => Promise<unknown>;
+  getNetwork?: () => Promise<unknown>;
 };
 
 async function freighter(): Promise<FreighterApi> {
@@ -91,6 +102,16 @@ async function freighter(): Promise<FreighterApi> {
     isConnected: injected?.isConnected ?? pkg.isConnected,
     requestAccess: injected?.requestAccess ?? pkg.requestAccess,
     signMessage: injected?.signMessage ?? pkg.signMessage,
+    getNetworkDetails:
+      injected?.getNetworkDetails ??
+      (typeof (pkg as any).getNetworkDetails === "function"
+        ? ((pkg as any).getNetworkDetails as () => Promise<unknown>)
+        : undefined),
+    getNetwork:
+      injected?.getNetwork ??
+      (typeof (pkg as any).getNetwork === "function"
+        ? ((pkg as any).getNetwork as () => Promise<unknown>)
+        : undefined),
   };
 }
 
@@ -113,14 +134,19 @@ export async function isFreighterConnected(): Promise<boolean> {
 
 export async function getFreighterNetwork(): Promise<string | null> {
   try {
-    const pkg = await loadFreighter();
-    if (typeof (pkg as any).getNetworkDetails === "function") {
-      const details = await (pkg as any).getNetworkDetails();
+    const wallet = await freighter();
+    if (typeof wallet.getNetworkDetails === "function") {
+      const details = (await wallet.getNetworkDetails()) as {
+        networkPassphrase?: string;
+        network?: string;
+      } | null;
       return details?.networkPassphrase ?? details?.network ?? null;
     }
-    if (typeof (pkg as any).getNetwork === "function") {
-      const network = await (pkg as any).getNetwork();
-      return typeof network === "string" ? network : (network?.networkPassphrase ?? null);
+    if (typeof wallet.getNetwork === "function") {
+      const network = await wallet.getNetwork();
+      if (typeof network === "string") return network;
+      const obj = network as { networkPassphrase?: string } | null;
+      return obj?.networkPassphrase ?? null;
     }
     return null;
   } catch {
@@ -155,9 +181,11 @@ function normalizeSignature(signed: unknown): string {
 /**
  * Ask the wallet to authorize and sign the canonical envelope payload.
  *
- * Throws WalletUnavailableError if Freighter is not installed/connected, and
- * WalletRejectedError if the user declines. The pipeline relies on the
- * rejection error to keep the draft intact.
+ * Throws WalletUnavailableError if Freighter is not installed/connected,
+ * WalletNetworkMismatchError if the connected wallet reports a different
+ * network than the configured one, and WalletRejectedError if the user
+ * declines. The pipeline relies on the rejection error to keep the draft
+ * intact.
  */
 export async function authorizeSend(canonicalPayload: string): Promise<WalletSignature> {
   const wallet = await freighter();
@@ -168,6 +196,13 @@ export async function authorizeSend(canonicalPayload: string): Promise<WalletSig
   };
   if (!connection?.isConnected) {
     throw new WalletUnavailableError();
+  }
+
+  const walletNetwork = await getFreighterNetwork();
+  if (walletNetwork !== null && walletNetwork !== config.network) {
+    throw new WalletNetworkMismatchError(
+      `Wallet is connected to "${walletNetwork}" but "${config.network}" is required`,
+    );
   }
 
   const access = (await wallet.requestAccess()) as {
@@ -196,7 +231,7 @@ export async function authorizeSend(canonicalPayload: string): Promise<WalletSig
   }
 
   return {
-    scheme: "Ed25519",
+    scheme: "Edd25519",
     signerAddress: signed?.signerAddress ?? access?.address ?? "",
     value: normalizeSignature(signed?.signedMessage),
   };
