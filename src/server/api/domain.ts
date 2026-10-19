@@ -510,7 +510,15 @@ export const accountStatusSchema = z.enum([
   "deactivated",
 ]);
 
-export const emailSchema = z.string().trim().toLowerCase().email("Expected a valid email address");
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine(
+    (addr) => !/[\r\n\0\x00-\x1F\x7F<>]/.test(addr),
+    "Email address cannot contain control characters, CRLF, or angle brackets",
+  )
+  .email("Expected a valid email address");
 
 export const usernameSchema = z
   .string()

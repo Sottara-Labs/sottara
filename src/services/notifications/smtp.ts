@@ -239,6 +239,19 @@ export class SmtpNotificationAdapter implements NotificationAdapter {
   }
 
   async deliverVerificationEmail(message: VerificationEmailMessage): Promise<DeliveryReceipt> {
+    if (!this.config.fromAddress || /[\r\n<>\0\x00-\x1F\x7F]/.test(this.config.fromAddress)) {
+      throw new SmtpError(
+        "Invalid fromAddress: contains prohibited characters (CRLF, angle brackets, or control characters)",
+        { command: "MAIL FROM" },
+      );
+    }
+    if (!message.to || /[\r\n<>\0\x00-\x1F\x7F]/.test(message.to)) {
+      throw new SmtpError(
+        "Invalid recipient: contains prohibited characters (CRLF, angle brackets, or control characters)",
+        { command: "RCPT TO" },
+      );
+    }
+
     const { host, port, secure } = this.config;
     const socket = await this.socketFactory({ host, port, secure });
     const replies = new ReplyStream(socket);
