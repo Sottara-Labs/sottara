@@ -25,6 +25,29 @@ import {
   type RelayService,
 } from "./relay-service";
 
+const DEFAULT_QUEUE_PAGE_SIZE = 25;const MAX_QUEUE_PAGE_SIZE = 100;
+const DEFAULT_INGEST_BATCH_SIZE = 25;
+const MAX_INGEST_BATCH_SIZE = 100;
+
+function parseBoundedInteger(
+  raw: string | null,
+  defaultValue: number,
+  min: number,
+  max: number,
+  name: string,
+): number {
+  if (raw === null || raw.trim() === "") return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new ApiError(
+      400,
+      "bad_request",
+      `${name} must be an integer between ${min} and ${max}`,
+    );
+  }
+  return parsed;
+}
+
 function requireRelayActor(request: Request, expectedAddress: string): string {
   const raw = request.headers.get("x-stealth-address");
   if (!raw) {
@@ -361,17 +384,100 @@ export function handleRelayQueue(request: Request, service: RelayService, recipi
     }
     const parsedActor = stellarAddressSchema.safeParse(actorHeader);
     if (!parsedActor.success) {
-      throw new ApiError(
-        401,
-        "unauthorized",
-        "x-stealth-address must be a valid Stellar G-address",
-      );
+      throw new ApiError(401, "unauthorized", "x-stealth-address must be a valid Stellar G-address");
     }
     if (parsedActor.data !== recipient) {
-      throw new ApiError(403, "forbidden", "Recipient does not match the authenticated actor");
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Recipient does not match the authenticated actor",
+      );
     }
 
-    const items = await service.getRecipientQueue(recipient);
-    return apiSuccess(request, { items }, { status: 200 });
+    const url = new URL(request.url);
+    const limit = parseBoundedInteger(
+      url.searchParams.get("limit"),
+      DEFAULT_QUEUE_PAGE_SIZE,
+      1,
+      MAX_QUEUE_PAGE_SIZE,
+      "limit",
+    );
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+
+    const page = await service.listRecipientQueuePage({
+      recipient,
+      cursor,
+      limit,
+    });
+
+    const headers: Record<string, string> = {};
+    if (page.nextCursor) {
+      headers["x-next-cursor"] = page.nextCursor;
+    }
+
+    return apiSuccess(
+      request,
+      {
+        items: page.items,
+        nextCursor: page.nextCursor ?? null,
+        hasMore: page.hasMore,
+        limit,
+      },
+      { status: 200, headers: { ...headers, "x-page-size": String(limit) } },
+    );
+  });
+}
+
+export function handleRelayIngest(request: Request, service: RelayService, recipient: string) {
+  return handleApiRequest(request, async () => {
+    const actorHeader = request.headers.get("x-stealth-address");
+    if (!actorHeader) {
+      throw new ApiError(401, "unauthorized", "Missing x-stealth-address header");
+    }
+    const parsedActor = stellarAddressSchema.safeParse(actorHeader);
+    if (!parsedActor.success) {
+      throw new ApiError(401, "unauthorized", "x-stealth-address must be a valid Stellar G-address");
+    }
+    if (parsedActor.data !== recipient) {
+      throw new ApiError(
+        403,
+        "forbidden",
+        "Recipient does not match the authenticated actor",
+      );
+    }
+
+    const url = new URL(request.url);
+    const batchSize = parseBoundedInteger(
+      url.searchParams.get("batchSize") ?? url.searchParams.get("limit"),
+      DEFAULT_INGEST_BATCH_SIZE,
+      1,
+      MAX_INGEST_BATCH_SIZE,
+      "batchSize",
+    );
+    const cursor = url.searchParams.get("cursor") ?? undefined;
+
+    const result = await service.ingestRecipientQueue({
+      recipient,
+      cursor,
+      batchSize,
+    });
+
+    const headers: Record<string, string> = {
+      "x-ingested-count": String(result.ingestedCount),
+    };
+    if (result.nextCursor) {
+      headers["x-next-cursor"] = result.nextCursor;
+    }
+
+    return apiSuccess(
+      request,
+      {
+        ingestedCount: result.ingestedCount,
+        nextCursor: result.nextCursor ?? null,
+        hasMore: result.hasMore,
+        batchSize,
+      },
+      { status: 200, headers },
+    );
   });
 }
