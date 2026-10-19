@@ -22,7 +22,16 @@ export function PostageBalanceBadge() {
 
   // Active, Stale, Pending
   const isStale = ui.kind === "stale";
-  const balance = ui.status.balanceXlm ?? "0";
+  const balance = ui.status.balanceXlm;
+
+  if (balance == null) {
+    return (
+      <Badge variant="outline" className="text-muted-foreground gap-1">
+        <AlertCircleIcon className="w-3 h-3" />
+        Balance unavailable
+      </Badge>
+    );
+  }
 
   return (
     <Badge variant="secondary" className={`gap-1 ${isStale ? "opacity-70" : ""}`}>
