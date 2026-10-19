@@ -130,9 +130,21 @@ export interface LifecycleClientOptions {
 
 /** Map a contract error code to an actionable LifecycleError variant. */
 export function parseLifecycleError(code: number): LifecycleError | undefined {
-  return Object.values(LifecycleError).includes(code as LifecycleError)
-    ? (code as LifecycleError)
-    : undefined;
+  const variants: Record<number, LifecycleError> = {
+    1: LifecycleError.AlreadyInitialized,
+    2: LifecycleError.NotInitialized,
+    3: LifecycleError.UnauthorizedContract,
+    4: LifecycleError.PolicyRejected,
+    5: LifecycleError.PolicyVersionMismatch,
+    6: LifecycleError.PostageMismatch,
+    7: LifecycleError.ReceiptMismatch,
+    8: LifecycleError.MissingLifecycle,
+    9: LifecycleError.TerminalStateMismatch,
+    10: LifecycleError.DuplicateLifecycle,
+    11: LifecycleError.AlreadyDelivered,
+    12: LifecycleError.AlreadyRead,
+  };
+  return variants[code];
 }
 
 /** Typed Soroban contract client for the Lifecycle contract. */
@@ -172,14 +184,14 @@ export async function initialize(
   postage: string,
   receipts: string,
 ): Promise<contract.Ok<void> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).initialize({ policies, postage, receipts });
+  const tx = await client.initialize({ policies, postage, receipts });
   return tx.result;
 }
 
 export async function config(
   client: contract.Client,
 ): Promise<contract.Ok<LifecycleConfig> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).config({});
+  const tx = await client.config({});
   return tx.result;
 }
 
@@ -193,7 +205,7 @@ export async function bind(
   verified: boolean,
   receipt_required: boolean,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).bind({
+  const tx = await client.bind({
     message_id,
     owner,
     sender,
@@ -210,7 +222,7 @@ export async function verifySettle(
   message_id: Buffer,
   postage: Postage,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_settle({ message_id, postage });
+  const tx = await client.verify_settle({ message_id, postage });
   return tx.result;
 }
 
@@ -219,7 +231,7 @@ export async function verifyRefund(
   message_id: Buffer,
   postage: Postage,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_refund({ message_id, postage });
+  const tx = await client.verify_refund({ message_id, postage });
   return tx.result;
 }
 
@@ -228,7 +240,7 @@ export async function verifyDispute(
   message_id: Buffer,
   postage: Postage,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_dispute({ message_id, postage });
+  const tx = await client.verify_dispute({ message_id, postage });
   return tx.result;
 }
 
@@ -237,7 +249,7 @@ export async function verifyExpire(
   message_id: Buffer,
   postage: Postage,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_expire({ message_id, postage });
+  const tx = await client.verify_expire({ message_id, postage });
   return tx.result;
 }
 
@@ -246,7 +258,7 @@ export async function verifyReclaim(
   message_id: Buffer,
   postage: Postage,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_reclaim({ message_id, postage });
+  const tx = await client.verify_reclaim({ message_id, postage });
   return tx.result;
 }
 
@@ -255,7 +267,7 @@ export async function verifyDelivered(
   message_id: Buffer,
   receipt: ReceiptState,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_delivered({ message_id, receipt });
+  const tx = await client.verify_delivered({ message_id, receipt });
   return tx.result;
 }
 
@@ -264,7 +276,7 @@ export async function verifyRead(
   message_id: Buffer,
   receipt: ReceiptState,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).verify_read({ message_id, receipt });
+  const tx = await client.verify_read({ message_id, receipt });
   return tx.result;
 }
 
@@ -272,6 +284,6 @@ export async function get(
   client: contract.Client,
   message_id: Buffer,
 ): Promise<contract.Ok<LifecycleRecord> | contract.Err<{ message: string }>> {
-  const tx = await (client as any).get({ message_id });
+  const tx = await client.get({ message_id });
   return tx.result;
 }
