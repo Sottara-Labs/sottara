@@ -27,10 +27,90 @@ const uploadChunkSchema = z.object({
   final: z.boolean(),
 });
 
-function hexToBytes(hex: string): Uint8Array {
-  const out = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(hex.substr(i * 2, 2), 16);
+export const NONCE_BYTES = 12;
+export const MAC_BYTES = 16;
+export const MAX_CHUNK_SIZE_BYTES = 1 * 1024 * 1024; // 1 MiB (matches DEFAULT_CHUNK_SIZE_BYTES and fit within 2 MiB relay limit)
+export const MAX_FRAME_SIZE_BYTES = NONCE_BYTES + MAX_CHUNK_SIZE_BYTES + MAC_BYTES;
+
+const STRICT_BASE64_REGEX =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{4})$/;
+
+export function validateHexBytes(
+  hex: string,
+  expectedBytes: number,
+  fieldName: string,
+): Uint8Array {
+  if (
+    typeof hex !== "string" ||
+    hex.length !== expectedBytes * 2 ||
+    !/^[0-9a-fA-F]+$/.test(hex)
+  ) {
+    throw new ApiError(
+      400,
+      "bad_request",
+      `Invalid ${fieldName}: must be exactly ${expectedBytes} bytes of valid hexadecimal (${expectedBytes * 2} characters)`,
+    );
+  }
+  const out = new Uint8Array(expectedBytes);
+  for (let i = 0; i < expectedBytes; i++) {
+    const val = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(val)) {
+      throw new ApiError(
+        400,
+        "bad_request",
+        `Invalid ${fieldName}: contains non-hexadecimal character`,
+      );
+    }
+    out[i] = val;
+  }
+  return out;
+}
+
+export function validateAndDecodeStrictBase64(
+  b64: string,
+  fieldName: string,
+  maxBytes: number = MAX_CHUNK_SIZE_BYTES,
+): Uint8Array {
+  if (
+    typeof b64 !== "string" ||
+    b64.length === 0 ||
+    b64.length % 4 !== 0 ||
+    !STRICT_BASE64_REGEX.test(b64)
+  ) {
+    throw new ApiError(
+      400,
+      "bad_request",
+      `Invalid ${fieldName}: must be valid strict base64 encoding without stray characters or malformed padding`,
+    );
+  }
+
+  let padding = 0;
+  if (b64.endsWith("==")) padding = 2;
+  else if (b64.endsWith("=")) padding = 1;
+  const decodedLength = (b64.length / 4) * 3 - padding;
+
+  if (decodedLength > maxBytes) {
+    throw new ApiError(
+      400,
+      "bad_request",
+      `Attachment chunk ciphertext exceeds maximum size of ${maxBytes} bytes`,
+    );
+  }
+
+  let binary: string;
+  try {
+    binary = atob(b64);
+  } catch {
+    throw new ApiError(
+      400,
+      "bad_request",
+      `Invalid ${fieldName}: base64 decoding failed`,
+    );
+  }
+
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    out[i] = binary.charCodeAt(i);
   }
   return out;
 }
@@ -56,9 +136,36 @@ export const Route = createFileRoute("/api/v1/attachments/chunk")({
             request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
             "unknown";
 
-          const nonceBytes = hexToBytes(input.nonce);
-          const ciphertextBytes = Uint8Array.from(atob(input.ciphertext), (c) => c.charCodeAt(0));
-          const macBytes = hexToBytes(input.mac);
+          // Enforce framing validation and bounds before touching upload sessions or storage
+          // 1. Validate nonce (exactly 12 bytes hex)
+          const nonceBytes = validateHexBytes(input.nonce, NONCE_BYTES, "nonce");
+
+          // 2. Validate MAC (exactly 16 bytes hex)
+          const macBytes = validateHexBytes(input.mac, MAC_BYTES, "mac");
+
+          // 3. Validate maximum frame size before decoding
+          let padding = 0;
+          if (input.ciphertext.endsWith("==")) padding = 2;
+          else if (input.ciphertext.endsWith("=")) padding = 1;
+          const estimatedCiphertextBytes =
+            input.ciphertext.length % 4 === 0
+              ? (input.ciphertext.length / 4) * 3 - padding
+              : Math.ceil((input.ciphertext.length * 3) / 4);
+          const estimatedFrameSize = NONCE_BYTES + estimatedCiphertextBytes + MAC_BYTES;
+          if (estimatedFrameSize > MAX_FRAME_SIZE_BYTES) {
+            throw new ApiError(
+              400,
+              "bad_request",
+              `Attachment chunk frame size (${estimatedFrameSize} bytes) exceeds maximum limit of ${MAX_FRAME_SIZE_BYTES} bytes`,
+            );
+          }
+
+          // 4. Validate ciphertext (strict base64) and decode
+          const ciphertextBytes = validateAndDecodeStrictBase64(
+            input.ciphertext,
+            "ciphertext",
+            MAX_CHUNK_SIZE_BYTES,
+          );
 
           const chunkBytes = new Uint8Array(
             nonceBytes.length + ciphertextBytes.length + macBytes.length,
@@ -66,6 +173,17 @@ export const Route = createFileRoute("/api/v1/attachments/chunk")({
           chunkBytes.set(nonceBytes, 0);
           chunkBytes.set(ciphertextBytes, nonceBytes.length);
           chunkBytes.set(macBytes, nonceBytes.length + ciphertextBytes.length);
+
+          // Verify no NaN byte exists in the concatenated frame
+          for (let i = 0; i < chunkBytes.length; i++) {
+            if (Number.isNaN(chunkBytes[i])) {
+              throw new ApiError(
+                400,
+                "bad_request",
+                "Malformed frame: contains invalid byte representation",
+              );
+            }
+          }
 
           const { enforceCentralAbuse } = await import("@/server/api/abuse-service");
           const decision = await enforceCentralAbuse(ctx.repository, {
