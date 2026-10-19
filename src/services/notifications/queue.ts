@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   canTransitionDeliveryState,
+  canTransitionProviderEvent,
   classifySmtpReplyCode,
   type DeliveryReasonClass,
   type DeliveryState,
@@ -245,7 +246,10 @@ export class VerificationMailQueue {
     if (!record) return undefined;
 
     const nextState = event.eventType as DeliveryState;
-    if (!canTransitionDeliveryState(record.state, nextState)) {
+    if (!canTransitionProviderEvent(record.state, nextState)) {
+      console.warn(
+        `[VerificationMailQueue] Dropped provider event '${nextState}' for message '${event.messageId}': invalid transition from '${record.state}'`,
+      );
       return { ...record };
     }
 
@@ -270,6 +274,7 @@ export class VerificationMailQueue {
       reasonClass,
       event.rawReason ? redactNotificationText(event.rawReason) : undefined,
       event.providerEventId,
+      true,
     );
 
     if (nextState === "hard_bounce" || nextState === "rejected" || nextState === "complaint") {
@@ -351,9 +356,13 @@ export class VerificationMailQueue {
     reasonClass: DeliveryReasonClass,
     lastErrorClass?: string,
     providerEventId?: string,
+    isProviderEvent = false,
   ): DeliveryRecord {
     const record = this.records.get(messageId)!;
-    if (!canTransitionDeliveryState(record.state, state) && record.state !== state) {
+    const allowed = isProviderEvent
+      ? canTransitionProviderEvent(record.state, state)
+      : canTransitionDeliveryState(record.state, state);
+    if (!allowed && record.state !== state) {
       return { ...record };
     }
     record.state = state;
