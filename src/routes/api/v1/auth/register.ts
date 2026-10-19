@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { registrationRequestSchema } from "@/features/identity/registration";
 import { buildDeviceFingerprint } from "@/server/api/abuse-service";
-import { registerWithPassword } from "@/server/api/auth/registration-service";
+import { registerWithPassword } from "@/server/api/registration-service";
 import { getApiContext } from "@/server/api/context";
 import { parseJsonBody } from "@/server/api/request";
 import { apiSuccess, handleApiRequest } from "@/server/api/response";
