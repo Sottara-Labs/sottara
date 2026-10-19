@@ -27,3 +27,5 @@ export function useIsMobile() {
 
   return !!isMobile;
 }
+
+export { useIsMobile as default };
