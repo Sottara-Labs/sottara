@@ -55,7 +55,7 @@ export class ManagedWalletService {
         throw new Error("Only invokeHostFunction operations are allowed");
       }
 
-      // TODO: Perform deep inspection of the host function invocation here to ensure it
+      // Perform deep inspection of the host function invocation to ensure it
       // perfectly aligns with the validated `intent`. This satisfies the "Arbitrary transaction XDR
       // cannot be submitted for signing" requirement.
       this.verifyOperationMatchesIntent(op, intent, this.config);
@@ -209,6 +209,19 @@ export class ManagedWalletService {
         const targetSender = args[1]; // sender is the 2nd argument in submit()
         if (targetSender !== intent.senderAddress) {
           throw new Error(`Transaction submits postage for a different sender: ${targetSender}`);
+        }
+        // The postage amount is the 4th argument in submit(). It must not exceed
+        // the amount authorised by the intent.
+        const postageAmount = args[3];
+        if (typeof postageAmount !== "bigint" && typeof postageAmount !== "number") {
+          throw new Error(`Transaction postage amount is not numeric: ${String(postageAmount)}`);
+        }
+        const postageAmountStroops = BigInt(postageAmount);
+        const intentAmountStroops = BigInt(intent.amountStroops);
+        if (postageAmountStroops !== intentAmountStroops) {
+          throw new Error(
+            `Transaction postage amount ${postageAmountStroops.toString()} does not match intent amount ${intentAmountStroops.toString()}`,
+          );
         }
       }
     } else if (intent.type === "lifecycle") {
