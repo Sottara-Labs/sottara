@@ -187,13 +187,6 @@ jobs:
         \ diff openapi.json --base origin/main --check\n"
       env:
         OPTIC_TOKEN: ${{ secrets.OPTIC_TOKEN }}
-    - name: Upload Client Artifacts
-      if: success()
-      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-      with:
-        name: client-dist
-        path: dist/
-        retention-days: 1
     timeout-minutes: 45
   contract-checks:
     name: Contract Checks
