@@ -1843,6 +1843,7 @@ export class MemoryApiRepository implements ApiRepository {
     type?: DurableJobType;
     status?: JobStatus;
     limit?: number;
+    after?: string;
   }): Promise<DurableJob[]> {
     const limit = filter?.limit ?? 50;
     const matches: DurableJob[] = [];
@@ -1852,7 +1853,16 @@ export class MemoryApiRepository implements ApiRepository {
       matches.push(structuredClone(job));
     }
     matches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return matches.slice(0, limit);
+    let results = matches;
+    if (filter?.after) {
+      const idx = results.findIndex((j) => j.jobId === filter.after);
+      results = idx >= 0 ? results.slice(idx + 1) : results;
+    }
+    return results.slice(0, limit);
+  }
+
+  async deleteJob(jobId: string): Promise<boolean> {
+    return this.jobs.delete(jobId);
   }
 
   async createDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
@@ -1870,6 +1880,7 @@ export class MemoryApiRepository implements ApiRepository {
     jobType?: DurableJobType;
     status?: DeadLetterStatus;
     limit?: number;
+    after?: string;
   }): Promise<DeadLetter[]> {
     const limit = filter?.limit ?? 50;
     const matches: DeadLetter[] = [];
@@ -1881,13 +1892,22 @@ export class MemoryApiRepository implements ApiRepository {
     matches.sort(
       (a, b) => new Date(b.deadLetteredAt).getTime() - new Date(a.deadLetteredAt).getTime(),
     );
-    return matches.slice(0, limit);
+    let results = matches;
+    if (filter?.after) {
+      const idx = results.findIndex((dl) => dl.deadLetterId === filter.after);
+      results = idx >= 0 ? results.slice(idx + 1) : results;
+    }
+    return results.slice(0, limit);
   }
 
   async updateDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
     const stored = structuredClone(deadLetter);
     this.deadLetters.set(stored.deadLetterId, stored);
     return structuredClone(stored);
+  }
+
+  async deleteDeadLetter(deadLetterId: string): Promise<boolean> {
+    return this.deadLetters.delete(deadLetterId);
   }
 
   async getReceiptCheckpoint(streamId: string): Promise<ReceiptCheckpoint | null> {
