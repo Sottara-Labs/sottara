@@ -1,11 +1,12 @@
-/**
+/*
  * Algorithm-aware nonce helpers (#1694).
  *
  * Centralizes secure nonce generation and strict validation so that every
  * crypto path uses a consistent nonce length, encoding, and uniqueness story.
  *
- * Production always uses `crypto.getRandomValues`. A deterministic generator
- * can be injected for tests only; it must never be used in production paths.
+ * Production always uses `crypto.getRandomValues`. A test-vector override
+ * can be installed for tests only via an explicit scope; it is ignored
+ * outside that scope and must never be used in production paths.
  *
  * This module is intentionally self-contained: it defines its own minimal,
  * non-secret error and result types so it does not depend on sibling crypto
@@ -14,6 +15,7 @@
 
 import { recordCryptoTelemetry, type CryptoResultCode } from "./telemetry";
 import { SUITE_REGISTRY } from "./suites";
+import { getActiveCryptoTestVectors } from "./testing";
 
 /** Stable, non-secret failure codes for nonce operations. */
 export type NonceErrorCode = "crypto_algorithm_error" | "crypto_validation_error";
@@ -47,12 +49,11 @@ export const NONCE_LENGTHS: Record<string, number> = Object.fromEntries(
 
 export type NonceAlgorithm = keyof typeof NONCE_LENGTHS;
 
-import { getCryptoTestVectors } from "./testing";
-
 function randomBytes(length: number): Uint8Array {
-  const { getRandomValues } = getCryptoTestVectors();
-  if (getRandomValues) {
-    return getRandomValues(new Uint8Array(length));
+  // Test-vector override is only visible inside an explicit scope.
+  const override = getActiveCryptoTestVectors();
+  if (override.getRandomValues) {
+    return override.getRandomValues(new Uint8Array(length));
   }
   if (typeof crypto === "undefined" || typeof crypto.getRandomValues !== "function") {
     throw new NonceError("crypto_algorithm_error", "secure random source unavailable");

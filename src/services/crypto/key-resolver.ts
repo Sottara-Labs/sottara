@@ -68,6 +68,18 @@ function parseIso(value: string): number {
 }
 
 /**
+ * Resolve the current time, honouring the crypto test-vector override
+ * only when it is explicitly active (scoped by the testing harness).
+ */
+function currentTime(): Date {
+  const override = getCryptoTestVectors();
+  if (overrlide.active && override.now) {
+    return override.now();
+  }
+  return new Date();
+}
+
+/**
  * Validate a resolved key: bound to the requested recipient, within its
  * validity window, not revoked, and carrying real public-key material.
  * Throws ResolverError on any failure so callers never use an unsafe key.
@@ -75,7 +87,7 @@ function parseIso(value: string): number {
 export function validateResolvedKey(
   key: ResolvedKey,
   recipient: string,
-  now: Date = getCryptoTestVectors().now ? getCryptoTestVectors().now!() : new Date(),
+  now: Date = currentTime(),
 ): ResolvedKey {
   if (key.recipient !== recipient) {
     throw new ResolverError("resolved key is not bound to the requested recipient");
@@ -142,7 +154,7 @@ export function validateHistoricalKey(
 export async function resolveTrustedKey(
   resolver: RecipientKeyResolver,
   recipient: string,
-  now: Date = getCryptoTestVectors().now ? getCryptoTestVectors().now!() : new Date(),
+  now: Date = currentTime(),
 ): Promise<ResolvedKey> {
   const startTime = performance.now();
   let result: CryptoResultCode = "success";
