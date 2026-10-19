@@ -1,5 +1,5 @@
-/**
- * BETA-088 — derive security / crypto gate status from step outcomes and evidence.
+/*
+ * BETA-088 -- derive security / crypto gate status from step outcomes and evidence.
  * Process exit codes are not trusted on their own.
  */
 
@@ -12,7 +12,7 @@ export function deriveSecretScanStatus({
   if (forkPr === true || forkPr === "true") {
     return {
       status: "skipped",
-      message: "Fork PR — dependency review and Gitleaks skipped",
+      message: "Fork PR — Dependency review and Gitleaks skipped",
     };
   }
 
@@ -40,7 +40,6 @@ export function deriveSecretScanStatus({
 
 export function deriveBetaSecurityStatus({
   cryptoOutcome,
-  securityOutcome,
   cryptoEvidenceOutcome = "success",
   securityRegressionOutcome = "success",
   securityRoutesOutcome = "success",
