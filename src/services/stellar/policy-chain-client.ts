@@ -22,11 +22,31 @@ export interface PolicyChainSubmitResult {
   txHash: string;
 }
 
+/**
+ * Error thrown when a policy read could not be completed because the chain is
+ * unavailable (e.g. RPC outage). This is distinct from "not found" and must be
+ * treated as a retryable, fail-closed condition by callers.
+ */
+export class PolicyChainUnavailableError extends Error {
+  readonly retryable = true as const;
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message);
+    this.name = "PolicyChainUnavailableError";
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}
+
+export function isPolicyChainUnavailableError(error: unknown): error is PolicyChainUnavailableError {
+  return error instanceof PolicyChainUnavailableError;
+}
+
 export interface PolicyChainClient {
   readVersionedPolicy(owner: string): Promise<VersionedChainPolicy | null>;
   readMailboxPolicy(
     owner: string,
-  ): Promise<{ policy: MailboxPolicy | null; version: number | null }>;
+  ): Promise<{ policy: MailboxPolicy | null; version: number | null };
   readSenderRule(owner: string, sender: string): Promise<SenderRule | null>;
   readSenderTier(owner: string, sender: string): Promise<string | null>;
   submitMailboxPolicyWrite(
@@ -96,13 +116,20 @@ function toContractSenderRule(rule: SenderRule): ContractSenderRule {
 function fromContractSenderRule(rule: ContractSenderRule | number): SenderRule {
   const value = typeof rule === "number" ? rule : rule;
   switch (value) {
-    case ContractSenderRule.Allow:
+    case ContractSenderRule.Allow: // eslint-disable-line @typescript-eslint/no-duplicate-enum-members
       return "allow";
     case ContractSenderRule.Block:
       return "block";
     default:
       return "default";
   }
+}
+
+function toPolicyChainUnavailableError(operation: string, cause: unknown): PolicyChainUnavailableError {
+  const detail = cause instanceof Error ? cause.message : String(cause);
+  return new PolicyChainUnavailableError(`Failed to ${operation}: ${detail}`, {
+    cause,
+  });
 }
 
 export class SorobanPolicyChainClient implements PolicyChainClient {
@@ -115,7 +142,7 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
     this.wallet = new ManagedWalletService(config);
     const operatorSecret = config.secrets?.operatorSecret;
     if (!operatorSecret) {
-      throw new Error("Policy chain client requires STEALTH_OPERATOR_SECRET");
+      throw new Error("Policy chain client requires STEALHT_OPERATOR_SECRET");
     }
     this.operatorKeypair = Keypair.fromSecret(operatorSecret);
   }
@@ -134,8 +161,11 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       const client = this.policiesClient();
       const versioned = await getVersionedPolicy(client, owner);
       return { policy: versioned.policy, version: versioned.version };
-    } catch {
-      return null;
+    } catch (error) {
+      if (isPolicyNotFoundError(error)) {
+        return null;
+      }
+      throw toPolicyChainUnavailableError(`read policy for ${owner}`, error);
     }
   }
 
@@ -152,8 +182,11 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       const client = this.policiesClient();
       const rule = await readContractSenderRule(client, owner, sender);
       return fromContractSenderRule(rule);
-    } catch {
-      return null;
+    } catch (error) {
+      if (isPolicyNotFoundError(error)) {
+        return null;
+      }
+      throw toPolicyChainUnavailableError(`read sender rule for ${owner}/${sender}`, error);
     }
   }
 
@@ -162,8 +195,11 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
       const client = this.policiesClient();
       const tier = await readContractSenderTier(client, owner, sender);
       return tier === null || tier === undefined ? null : tier.toString();
-    } catch {
-      return null;
+    } catch (error) {
+      if (isPolicyNotFoundError(error)) {
+        return null;
+      }
+      throw toPolicyChainUnavailableError(`read sender tier for ${owner}/${sender}`, error);
     }
   }
 
@@ -282,6 +318,23 @@ export class SorobanPolicyChainClient implements PolicyChainClient {
   }
 }
 
+/**
+ * Determine whether an error from the contract client indicates a missing
+ * entry ("not found") rather than an infrastructure failure. Only the former
+ * should be converted to `null`; everything else must fail closed.
+ */
+function isPolicyNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { name?: string; message?: string; code?: string };
+  const name = candidate.name ?? "";
+  if (name === "PolicyNotFound" || name === "NotFound") return true;
+  const message = candidate.message ?? "";
+  if (/not found/i.test(message)) return true;
+  if (/no policy/i.test(message)) return true;
+  if (/contract entry missing/i.test(message)) return true;
+  return false;
+}
+
 export class InMemoryPolicyChainClient implements PolicyChainClient {
   private readonly mailbox = new Map<string, { policy: ChainMailboxPolicy; version: number }>();
   private readonly rules = new Map<string, SenderRule>();
@@ -308,18 +361,12 @@ export class InMemoryPolicyChainClient implements PolicyChainClient {
   }
 
   async readVersionedPolicy(owner: string): Promise<VersionedChainPolicy | null> {
-    if (this.unavailable) return null;
-    const stored = this.mailbox.get(owner);
-    if (!stored) return null;
-    return {
-      policy: {
-        allow_unknown: stored.policy.allowUnknown,
-        require_verified: stored.policy.requireVerified,
-        require_receipt: stored.policy.requireReceipt,
-        minimum_postage: BigInt(stored.policy.minimumPostage),
-      },
-      version: stored.version,
-    };
+    if (this.unavailable) {
+      throw new PolicyChainUnavailableError(`read policy for ${owner}: RPC unavailable`);
+    }
+    const entry = this.mailbox.get(owner);
+    if (!entry) return null;
+    return { policy: entry.policy, version: entry.version };
   }
 
   async readMailboxPolicy(
@@ -331,95 +378,65 @@ export class InMemoryPolicyChainClient implements PolicyChainClient {
   }
 
   async readSenderRule(owner: string, sender: string): Promise<SenderRule | null> {
-    if (this.unavailable) return null;
-    return this.rules.get(`${owner}:${sender}`) ?? "default";
+    if (this.unavailable) {
+      throw new PolicyChainUnavailableError(`read sender rule for ${owner}/${sender}: RPC unavailable`);
+    }
+    return this.rules.get(`${owner}:${sender}`) ?? null;
   }
 
   async readSenderTier(owner: string, sender: string): Promise<string | null> {
-    if (this.unavailable) return null;
+    if (this.unavailable) {
+      throw new PolicyChainUnavailableError(`read sender tier for ${owner}/${sender}: RPC unavailable`);
+    }
     return this.tiers.get(`${owner}:${sender}`) ?? null;
   }
 
   async submitMailboxPolicyWrite(
     owner: string,
     policy: ChainMailboxPolicy,
+    _actorAddress: string,
+    _requestId?: string,
   ): Promise<PolicyChainSubmitResult> {
     this.submitCalls += 1;
     if (this.failNextSubmit) {
       this.failNextSubmit = false;
-      throw new Error("simulated chain failure");
+      throw new Error("submit failed");
     }
-    const current = this.mailbox.get(owner);
-    const version = (current?.version ?? 0) + 1;
+    const existing = this.mailbox.get(owner);
+    const version = (existing?.version ?? 0) + 1;
     this.mailbox.set(owner, { policy, version });
-    return { txHash: `mem-mailbox-${owner.slice(0, 8)}-${version}` };
+    return { txHash: `in-memory-${version}` };
   }
 
   async submitSenderRuleWrite(
     owner: string,
     sender: string,
     rule: SenderRule,
+    _actorAddress: string,
+    _requestId?: string,
   ): Promise<PolicyChainSubmitResult> {
     this.submitCalls += 1;
     if (this.failNextSubmit) {
       this.failNextSubmit = false;
-      throw new Error("simulated chain failure");
+      throw new Error("submit failed");
     }
-    if (rule === "verify" || rule === "price") {
-      throw new Error(`Sender rule '${rule}' must not be submitted via set_sender_rule`);
-    }
-    const key = `${owner}:${sender}`;
-    if (rule === "default") {
-      this.rules.delete(key);
-      this.tiers.delete(key);
-    } else {
-      this.rules.set(key, rule);
-    }
-    return { txHash: `mem-sender-${sender.slice(0, 8)}` };
+    this.seedSenderRule(owner, sender, rule);
+    return { txHash: `in-memory-rule-${this.submitCalls}` };
   }
 
   async submitSenderTierWrite(
     owner: string,
     sender: string,
     minimumPostage: string,
+    _actorAddress: string,
+    _requestId?: string,
   ): Promise<PolicyChainSubmitResult> {
     this.submitCalls += 1;
     if (this.failNextSubmit) {
       this.failNextSubmit = false;
-      throw new Error("simulated chain failure");
+      throw new Error("submit failed");
     }
-    const key = `${owner}:${sender}`;
-    this.tiers.set(key, minimumPostage);
-    return { txHash: `mem-tier-${sender.slice(0, 8)}` };
+    this.seedSenderTier(owner, sender, minimumPostage);
+    return { txHash: `in-memory-tier-${this.submitCalls}` };
   }
-}
-
-let globalChainClient: PolicyChainClient | null = null;
-
-export function createPolicyChainClient(config?: BetaRuntimeConfig): PolicyChainClient | null {
-  if (globalChainClient) return globalChainClient;
-  try {
-    const runtime = config ?? loadRuntimeConfig();
-    if (!runtime.secrets?.operatorSecret) {
-      globalChainClient = new InMemoryPolicyChainClient();
-      return globalChainClient;
-    }
-    globalChainClient = new SorobanPolicyChainClient(runtime);
-    return globalChainClient;
-  } catch {
-    globalChainClient = new InMemoryPolicyChainClient();
-    return globalChainClient;
-  }
-}
-
-export function getPolicyChainClient(config?: BetaRuntimeConfig): PolicyChainClient {
-  return createPolicyChainClient(config) ?? new InMemoryPolicyChainClient();
-}
-
-export function setPolicyChainClientForTests(client: PolicyChainClient | null): void {
-  globalChainClient = client;
-}
-
-export function setPolicyChainClient(client: PolicyChainClient | null): void {
-  setPolicyChainClientForTests(client);
 }
