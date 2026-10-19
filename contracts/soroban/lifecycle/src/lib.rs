@@ -210,6 +210,8 @@ impl LifecycleContract {
         if owner != recipient {
             return Err(Error::PostageMismatch);
         }
+        // The sender is the party that funds the postage, so the contract
+        // requires the sender's authorization for the bind call.
         sender.require_auth();
 
         let key = DataKey::Record(message_id.clone());
@@ -1451,5 +1453,50 @@ mod auth_boundaries {
             &false,
             &false,
         );
+    }
+
+    #[test]
+    fn bind_authorizes_with_bound_sender() {
+        let env = Env::default();
+        let policies = Address::generate(&env);
+        let postage = Address::generate(&env);
+        let receipts = Address::generate(&env);
+        let lifecycle = env.register(LifecycleContract, ());
+        let client = LifecycleContractClient::new(&env, &lifecycle);
+        client.initialize(&policies, &postage, &receipts);
+
+        let sender = Address::generate(&env);
+        let recipient = Address::generate(&env);
+        let message_id = hash(&env, 1);
+
+        env.mock_auths(&[MockAuth {
+            address: &sender,
+            invoke: &MockAuthInvoke {
+                contract: &lifecycle,
+                fn_name: "bind",
+                args: (
+                    message_id.clone(),
+                    recipient.clone(),
+                    sender.clone(),
+                    recipient.clone(),
+                    0i128,
+                    false,
+                    false,
+                )
+                    .into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        let record = client.bind(
+            &message_id,
+            &recipient.clone(),
+            &sender.clone(),
+            &recipient.clone(),
+            &0_i128,
+            &false,
+            &false,
+        );
+        assert_eq!(record.sender, sender);
     }
 }

@@ -81,6 +81,7 @@ export interface SorobanLifecycleChainAdapterOptions {
   networkPassphrase: string;
   operatorPublicKey: string;
   operatorSecret: string;
+  resolveSenderSecret?: (sender: string) => string | undefined;
 }
 
 /**
@@ -91,8 +92,10 @@ export interface SorobanLifecycleChainAdapterOptions {
  */
 export class SorobanLifecycleChainAdapter implements LifecycleChainAdapter {
   private readonly client: contract.Client;
+  private readonly opts: SorobanLifecycleChainAdapterOptions;
 
   constructor(opts: SorobanLifecycleChainAdapterOptions) {
+    this.opts = opts;
     this.client = lifecycle.createLifecycleClient({
       contractId: opts.contractId,
       networkPassphrase: opts.networkPassphrase,
@@ -103,7 +106,22 @@ export class SorobanLifecycleChainAdapter implements LifecycleChainAdapter {
   }
 
   async anchor(input: LifecycleAnchor): Promise<LifecycleAnchorOutcome> {
-    const tx = await (this.client as any).bind({
+    // The contract's bind requires `sender.require_auth()`, so the transaction
+    // must be signed by the sender's key, not the operator's. When a sender
+    // key is resolvable we build a sender-signed client; otherwise we fall
+    // back to the operator-signed client (which will surface as retryable).
+    const senderSecret = this.opts.resolveSenderSecret?.(input.sender);
+    const client = senderSecret
+      ? lifecycle.createLifecycleClient({
+          contractId: this.opts.contractId,
+          networkPassphrase: this.opts.networkPassphrase,
+          rpcUrl: this.opts.rpcUrl,
+          publicKey: Keypair.fromSecret(senderSecret).publicKey(),
+          signer: senderSecret,
+        })
+      : this.client;
+
+    const tx = await (client as any).bind({
       message_id: Buffer.from(input.messageId, "hex"),
       owner: input.recipient,
       sender: input.sender,
@@ -164,6 +182,7 @@ export function buildLifecycleChainAdapter(
     networkPassphrase: config.network.networkPassphrase,
     operatorPublicKey: keypair.publicKey(),
     operatorSecret: secret,
+    resolveSenderSecret: config.secrets?.resolveSenderSecret,
   });
 }
 
