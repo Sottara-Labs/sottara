@@ -9,11 +9,13 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { nativeToScVal, scValToNative, xdr } from "@stellar/stellar-sdk";
 import {
   parsePostageError,
   PostageError,
   PostageStatus,
   createPostageClient,
+  decodePostageResult,
 } from "../../src/services/stellar/contracts/postage";
 
 // ---------------------------------------------------------------------------
@@ -141,5 +143,45 @@ describe("PostageError domain rules", () => {
 
   it("expiry boundary: NotExpired is code 9", () => {
     expect(parsePostageError(9)).toBe(PostageError.NotExpired);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// decodePostageResult: real Ok / Err ScVal payloads
+// ---------------------------------------------------------------------------
+
+describe("decodePostageResult", () => {
+  it("decodes a real Ok payload into its typed value", () => {
+    const okScVal = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Ok"),
+      nativeToScVal(42, { type: "u32" }),
+    ]);
+    const decoded = decodePostageResult(okScVal);
+    expect(decoded).toEqual({ ok: 42 });
+  });
+
+  it("decodes a real Err payload into the mapped PostageError", () => {
+    const errScVal = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Err"),
+      nativeToScVal(4, { type: "u32" }),
+    ]);
+    const decoded = decodePostageResult(errScVal);
+    expect(decoded).toEqual({ err: PostageError.DuplicateMessage });
+  });
+
+  it("fails when the Ok payload shape changes", () => {
+    const wrongShape = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Ok"),
+      nativeToScVal("not-a-number", { type: "string" }),
+    ]);
+    expect(() => decodePostageResult(wrongShape)).toThrow();
+  });
+
+  it("fails when the Err payload shape changes", () => {
+    const wrongShape = xdr.ScVal.scvVec([
+      xdr.ScVal.scvSymbol("Err"),
+      nativeToScVal("not-a-code", { type: "string" }),
+    ]);
+    expect(() => decodePostageResult(wrongShape)).toThrow();
   });
 });

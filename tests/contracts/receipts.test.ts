@@ -14,6 +14,7 @@ import {
   ReceiptsError,
   createReceiptsClient,
 } from "../../src/services/stellar/contracts/receipts";
+import { xdr, nativeToScVal, Address } from "@stellar/stellar-sdk";
 
 // ---------------------------------------------------------------------------
 // parseReceiptsError
@@ -117,5 +118,110 @@ describe("ReceiptsError domain rules", () => {
     // treated the same way as unknown codes.
     expect(parseReceiptsError(NaN)).toBeUndefined();
     expect(parseReceiptsError(1.5)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Result payload decoding (Ok / Err)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a real `ScVal` union representing a contract result.
+ *
+ * Soroban contract calls return `ScVal::Result` (a `Result<Val, Val>` union).
+ * These helpers construct genuine `xdr.ScVal` values so the bindings decode
+ * the same wire shape the contract emits on-chain.
+ */
+function okScVal(value: xdr.ScVal): xdr.ScVal {
+  return xdr.ScVal.scvResult(
+    new xdr.ScValResult({
+      switch: xdr.ScValType.scvVoid(),
+      ok: value,
+    }),
+  );
+}
+
+function errScVal(value: xdr.ScVal): xdr.ScVal {
+  return xdr.ScVal.scvResult(
+    new xdr.ScValResult({
+      switch: xdr.ScValType.scvVoid(),
+      error: value,
+    }),
+  );
+}
+
+describe("Receipts result payload decoding", () => {
+  const DUMMY_CONTRACT_ID = "C" + "B".repeat(55);
+  const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
+  const TESTNET_RPC = "https://soroban-testnet.stellar.org";
+
+  const client = createReceiptsClient({
+    contractId: DUMMY_CONTRACT_ID,
+    networkPassphrase: TESTNET_PASSPHRASE,
+    rpcUrl: TESTNET_RPC,
+  });
+
+  it("decodes a real Ok payload into a typed receipt", () => {
+    const receiptId = nativeToScVal(42n, { type: "u64" });
+    const commitment = nativeToScVal(Buffer.alloc(32, 0xab), { type: "bytes" });
+    const owner = new Address("G" + "B".repeat(55));
+
+    const okPayload = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: nativeToScVal("id", { type: "symbol" }),
+        val: receiptId,
+      }),
+      new xdr.ScMapEntry({
+        key: nativeToScVal("commitment", { type: "symbol" }),
+        val: commitment,
+      }),
+      new xdr.ScMapEntry({
+        key: nativeToScVal("owner", { type: "symbol" }),
+        val: owner.toScVal(),
+      }),
+    ]);
+
+    const decoded = client.decodeResult(okScVal(okPayload));
+
+    expect(decoded.isOk()).toBe(true);
+    const receipt = decoded.unwrap();
+    expect(receipt.id).toBe(42n);
+    expect(Buffer.from(receipt.commitment)).toEqual(Buffer.alloc(32, 0xab));
+    expect(receipt.owner).toBe(owner.toString());
+  });
+
+  it("decodes a real Err payload into a typed ReceiptsError", () => {
+    const errPayload = nativeToScVal(ReceiptsError.DuplicateReceipt, {
+      type: "u32",
+    });
+
+    const decoded = client.decodeResult(errScVal(errPayload));
+
+    expect(decoded.isErr()).toBe(true);
+    expect(decoded.unwrapErr()).toBe(ReceiptsError.DuplicateReceipt);
+  });
+
+  it("decodes a CommitmentMismatch Err payload", () => {
+    const errPayload = nativeToScVal(ReceiptsError.CommitmentMismatch, {
+      type: "u32",
+    });
+
+    const decoded = client.decodeResult(errScVal(errPayload));
+
+    expect(decoded.isErr()).toBe(true);
+    expect(decoded.unwrapErr()).toBe(ReceiptsError.CommitmentMismatch);
+  });
+
+  it("fails when the Ok receipt shape changes", () => {
+    // A receipt missing the `commitment` field must not decode as a valid
+    // receipt — this guards against silent shape drift in the contract result.
+    const malformedOk = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({
+        key: nativeToScVal("id", { type: "symbol" }),
+        val: nativeToScVal(42n, { type: "u64" }),
+      }),
+    ]);
+
+    expect(() => client.decodeResult(okScVal(malformedOk))).toThrow();
   });
 });
