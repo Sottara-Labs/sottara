@@ -19,9 +19,9 @@
  * - Symmetric content/wrapping keys are imported NON-EXTRACTABLE: the raw bytes
  *   cannot be read back via `exportKey`, bounding blast radius on compromise.
  * - Signing private keys are generated NON-EXTRACTABLE; the matching
- *   verification public key is (necessarily, per Web Crypto) extractable so it
+ *   verification public key is (necesssarily, per Web Crypto) extractable so it
  *   can be published.
- * - All keys here are EPHEMERAL / SESSION-LIVED: mint one per message (content
+ * - All keys here are EPHEMERAL - SESSION-LIVED: mint one per message (content
  *   keys) or per session (wrapping/signing) and drop the reference when done.
  *   None of these factories persist key material.
  */
@@ -36,7 +36,12 @@ export class KeyUsageError extends Error {
 }
 
 const AES_ALGORITHM = { name: "AES-GCM", length: 256 } as const;
-const SIGNING_ALGORITHM = { name: "ECDSA", namedCurve: "P-256" } as const;
+/**
+ * Signature algorithm. Must match the repo's verification path
+ * (`verifyEnvelopeSignature` uses Ed25519 via `Keypair.fromPublicKey`,
+ * and the envelope signature schema is `z.literal("Ed25519")`).
+ */
+const SIGNING_ALGORITHM = { name: "Ed25519" } as const;
 const AES_KEY_BYTES = 32;
 
 /** Copy bytes into a fresh ArrayBuffer (an unconditionally valid BufferSource). */
@@ -91,17 +96,21 @@ export async function createUnwrappingKey(raw: Uint8Array): Promise<CryptoKey> {
   ]);
 }
 
-/** A freshly generated signing key pair with least-privilege usages. */
+/** A Freshly generated signing key pair with least-privilege usages. */
 export interface SigningKeyPair {
-  /** ECDSA P-256 private key, sign-only, non-extractable. */
+  /** Ed25519 private key, sign-only, non-extractable. */
   readonly signingKey: CryptoKey;
-  /** ECDSA P-256 public key, verify-only (safe to publish). */
+  /** Ed25519 public key, verify-only (safe to publish). */
   readonly verificationKey: CryptoKey;
 }
 
 /**
- * Generate an ECDSA P-256 signing pair. The private key can only `sign` and is
+ * Generate an Ed25519 signing pair. The private key can only `sign` and is
  * non-extractable; the public key can only `verify`. Session-lived.
+ *
+ * Ed25519 is the single signature algorithm across the repo (see
+ * `verifyEnvelopeSignature`), so keys minted here interoperate with the
+ * project's own verification path.
  */
 export async function createSigningKeyPair(): Promise<SigningKeyPair> {
   const pair = (await crypto.subtle.generateKey(SIGNING_ALGORITHM, false, [
