@@ -8,7 +8,7 @@
  * The import is intentionally dynamic so that the Freighter bundle is excluded
  * from the initial SSR/client chunk and only loaded on first wallet call.
  */
-let _freighterPkg: typeof import("@stellar/freighter-api") | null = null;
+let _freighterPkg: typeof import("@stellar/freighter-api")  | null = null;
 async function loadFreighter() {
   if (!_freighterPkg) {
     const mod = await import("@stellar/freighter-api");
@@ -66,9 +66,9 @@ export async function resolveSenderAddress(): Promise<string | null> {
  * Wallet provider seam.
  *
  * Production always talks to the real Freighter API. End-to-end tests run in a
- * headless browser with no wallet extension, so they may install a
- * deterministic stub on `globalThis.__freighterApi`. The override is only
- * consulted when explicitly set, so production behaviour is unchanged.
+ * headless browser with no wallet extension, so they may install a deterministic
+ * stub on `globalThis.__freighterApi`. The override is only consulted when explicitly
+ * set, so production behaviour is unchanged.
  */
 // Extract the precise function types directly from the package declaration so the
 // local FreighterApi seam stays in sync with the library without re-stating signatures.
@@ -140,16 +140,63 @@ function isUserRejection(message: string): boolean {
   return /(declin|deni|reject|cancel)/i.test(message);
 }
 
-function normalizeSignature(signed: unknown): string {
-  if (typeof signed === "string") return signed;
-  if (signed instanceof Uint8Array) {
-    return Array.from(signed, (b) => b.toString(16).padStart(2, "0")).join("");
+function toHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function fromBase64(value: string): Uint8Array {
+  const normalised = value.replace(/\s+/g, "");
+  if (!normalised) throw new Error("Signature must not be empty");
+  if (!/^[A-Za-z0-9+/=]+$/.test(normalised)) {
+    throw new Error("Signature is not valid base64");
   }
-  const arrayLike = signed as { data?: number[] } | null;
-  if (arrayLike && Array.isArray(arrayLike.data)) {
-    return arrayLike.data.map((b) => b.toString(16).padStart(2, "0")).join("");
+  const bytes = Buffer.from(normalised, "base64");
+  if (bytes.length !== 64) {
+    throw new Error("Signature must be 64 bytes");
   }
-  return String(signed ?? "");
+  return new Uint8Array(bytes);
+}
+
+function fromHex(value: string): Uint8Array {
+  const normalised = value.trim();
+  if (normalised.length !== 128) {
+    throw new Error("Signature must be 128 hex characters");
+  }
+  if (!/^[a-f0-9]{128}$/i.test(normalised)) {
+    throw new Error("Signature is not valid hex");
+  }
+  const bytes = new Uint8Array(64);
+  for (let i = 0; i < 64; i += 1) {
+    bytes[i] = parseInt(normalised.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+export function normalizeSignature(signed: unknown): string {
+  let hex: string;
+  if (typeof signed === "string") {
+    const trimmed = signed.trim();
+    if (/^[a-f0-9]{128}$/i.test(trimmed)) {
+      hex = trimmed.toLowerCase();
+    } else {
+      hex = toHex(fromBase64(trimmed));
+    }
+  } else if (signed instanceof Uint8Array) {
+    if (signed.length !== 64) throw new Error("Signature must be 64 bytes");
+    hex = toHex(signed);
+  } else {
+    const arrayLike = signed as { data?: number[] } | null;
+    if (arrayLike && Array.isArray(arrayLike.data)) {
+      if (arrayLike.data.length !== 64) throw new Error("Signature must be 64 bytes");
+      hex = toHex(new Uint8Array(arrayLike.data));
+    } else {
+      throw new Error("Unsupported signature format");
+    }
+  }
+  if (hex.length !== 128) {
+    throw new Error("Signature must be 128 hex characters");
+  }
+  return hex;
 }
 
 /**

@@ -15,6 +15,36 @@ export function hexStringSchema(lengthHex: number) {
     .regex(/^[a-f0-9]+$/i, "Invalid hex character or casing");
 }
 
+// Helper for Ed25519 signatures: accepts either 128-character hex or base64
+// and normalises the value to 128-character lowercase hex before validation.
+export function normaliseSignatureHex(value: string): string {
+  const trimmed = value.trim();
+
+  // Already a valid 128-character hex string.
+  if (/^[a-f0-9]{128}$/i.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+
+  // Otherwise treat as base64 and re-encode as hex.
+  const normalisedBase64 = trimmed.replace(/\s/g, "").replace(/-/g, "+").replace(/_/g, "/");
+  const padding = normalisedBase64.length % 4;
+  const padded =
+    padding === 0
+      ? normalisedBase64
+      : normalisedBase64 + "=".repeat(4 - padding);
+
+  if (!/^[A-Za-z0-9+/]+={2}$/.test(padded)) {
+    throw new Error("Signature must be 128-character hex or base64 encoded");
+  }
+
+  const bytes = Buffer.from(padded, "base64");
+  if (bytes.length !== 64) {
+    throw new Error("Signature must decode to exactly 64 bytes");
+  }
+
+  return bytes.toString("hex");
+}
+
 // Encryption Metadata Schema
 export const encryptionMetadataSchema = z
   .object({
@@ -72,7 +102,7 @@ export const envelopePayloadSchema = z
     attachments: z.array(envelopeAttachmentSchema).max(100),
     critical: z.array(z.string().min(1).max(64)).max(20).optional(),
   })
-  .passthrough() // Allow unknown fields for extensibility, but:
+  .pasthrough() // Allow unknown fields for extensibility, but:
   .superRefine((data, ctx) => {
     try {
       validateCriticalFields(data as Record<string, unknown>);
@@ -90,7 +120,7 @@ export const envelopeSignatureSchema = z
   .object({
     scheme: z.literal("Ed25519"),
     signerAddress: stellarAddressSchema,
-    value: hexStringSchema(128), // 64 bytes = 128 hex characters
+    value: z.string().trim().transform(normaliseSignatureHex).pipe(hexStringSchema(128)), // 64 bytes = 128 hex characters
   })
   .strict();
 
