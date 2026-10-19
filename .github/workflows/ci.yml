@@ -14,11 +14,11 @@ on:
     - main
     - develop
 env:
-  BUN_VERSION: 1.3.14
-  NODE_VERSION: '24'
-  RUST_VERSION: 1.98.0
-  OPTIC_VERSION: 1.0.9
-  WRANGLER_VERSION: 4.105.0
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24"
+  RUST_VERSION: "1.98.0"
+  OPTIC_VERSION: "1.0.9"
+  WRANGLER_VERSION: "4.105.0"
   FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name
     != github.repository }}
 permissions:
