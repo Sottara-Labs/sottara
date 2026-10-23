@@ -179,32 +179,50 @@ describe("BETA-091: orchestrator + invite fallback", () => {
     expect(receipt.safeTargetReference).not.toContain("dana");
   });
 
-  it("falls back to capture sink outside production when SMTP fails", async () => {
+  it("falls back to capture sink outside production on transport connection error", async () => {
     const failing: {
       transport: "smtp";
       deliverVerificationEmail: () => Promise<never>;
     } = {
       transport: "smtp",
       deliverVerificationEmail: async () => {
-        throw new SmtpError("smtp unavailable", { replyCode: 421, command: "CONNECT" });
+        throw new SmtpError("connect ECONNREFUSED 127.0.0.1:587", { command: "CONNECT" });
       },
     };
     const fallback = new InviteFallbackNotificationAdapter(failing, "development");
     const receipt = await fallback.deliverVerificationEmail(message);
     expect(receipt.accepted).toBe(true);
     expect(fallback.didFallBack()).toBe(true);
+    expect(fallback.getLastFailureClass()).toBeDefined();
     expect(fallback.getCaptureSink().latestMessage?.to).toBe(message.to);
+  });
+
+  it("propagates 550 in beta and does not reach the sink", async () => {
+    const failing: {
+      transport: "smtp";
+      deliverVerificationEmail: () => Promise<never>;
+    } = {
+      transport: "smtp",
+      deliverVerificationEmail: async () => {
+        throw new SmtpError("550 Mailbox unavailable", { replyCode: 550, command: "RCPT TO" });
+      },
+    };
+    const fallback = new InviteFallbackNotificationAdapter(failing, "development");
+    await expect(fallback.deliverVerificationEmail(message)).rejects.toBeInstanceOf(SmtpError);
+    expect(fallback.didFallBack()).toBe(false);
+    expect(fallback.getCaptureSink().size).toBe(0);
   });
 
   it("never falls back in production", async () => {
     const failing = {
       transport: "smtp" as const,
       deliverVerificationEmail: async () => {
-        throw new SmtpError("smtp unavailable", { replyCode: 421 });
+        throw new SmtpError("connect ECONNREFUSED 127.0.0.1:587", { command: "CONNECT" });
       },
     };
     const fallback = new InviteFallbackNotificationAdapter(failing, "production");
     await expect(fallback.deliverVerificationEmail(message)).rejects.toBeInstanceOf(SmtpError);
+    expect(fallback.didFallBack()).toBe(false);
   });
 });
 
