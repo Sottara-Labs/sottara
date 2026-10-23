@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   CryptoIdError,
@@ -55,5 +55,20 @@ describe("crypto-secure message id generation (#1693)", () => {
     expect(isValidMessageId(base64url, "base64url")).toBe(true);
     expect(isValidMessageId(base64url.slice(0, -1), "base64url")).toBe(false);
     expect(isValidMessageId(`${base64url}A`, "base64url")).toBe(false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("validates base64url ids even when the Node-only Buffer global is absent", () => {
+    // Simulates the browser bundle, where `Buffer` does not exist.
+    vi.stubGlobal("Buffer", undefined);
+    expect(globalThis.Buffer).toBeUndefined();
+
+    expect(isValidMessageId(generateMessageId("base64url"), "base64url")).toBe(true);
+    expect(isValidMessageId("b".repeat(21), "base64url")).toBe(false); // wrong length
+    expect(isValidMessageId("b".repeat(23), "base64url")).toBe(false); // wrong length
+    expect(isValidMessageId("b".repeat(21) + "!", "base64url")).toBe(false); // illegal character
   });
 });
