@@ -244,6 +244,30 @@ describe("memory/BufferPool", () => {
     const buf = pool.acquire(100_000);
     expect(buf.byteLength).toBe(131072); // 2 × 65536
   });
+
+  it("never hands back a buffer smaller than the requested size across the 64 KiB boundary (#289)", () => {
+    pool.release(new ArrayBuffer(100_000));
+
+    const reused = pool.acquire(131_072);
+    expect(reused.byteLength).toBeGreaterThanOrEqual(131_072);
+  });
+
+  it("reuses a released buffer for any bucket it can satisfy (#289)", () => {
+    const buf = new ArrayBuffer(100_000);
+    pool.release(buf);
+
+    // A 100,000-byte buffer satisfies the 65,536-byte bucket, not the 131,072 one.
+    expect(pool.acquire(65_536)).toBe(buf);
+  });
+
+  it("acquire(n).byteLength >= n for every size the pool has released (#289)", () => {
+    for (const size of [200, 256, 1000, 65_536, 100_000, 131_072, 200_000]) {
+      pool.release(new ArrayBuffer(size));
+      for (const n of [128, 256, 1000, 65_536, 100_000, 131_072, 200_000]) {
+        expect(pool.acquire(n).byteLength).toBeGreaterThanOrEqual(n);
+      }
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
