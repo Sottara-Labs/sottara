@@ -225,6 +225,30 @@ function base64(value: string): string {
   return btoa(binary);
 }
 
+/**
+ * RFC 5321 Section 4.5.2: Dot-stuffing and DATA payload framing.
+ *
+ * Before appending the single terminating sequence (CRLF . CRLF), any body line
+ * starting with a period (.) is prepended with an extra period (dot-stuffed)
+ * so that body text cannot terminate DATA prematurely or inject arbitrary SMTP commands.
+ * Keeps the header/body framing explicit.
+ */
+export function encodeSmtpDataPayload(
+  headers: Record<string, string> | string[],
+  body: string | string[],
+): string {
+  const headerLines = Array.isArray(headers)
+    ? headers
+    : Object.entries(headers).map(([key, value]) => `${key}: ${value}`);
+
+  const rawBodyText = Array.isArray(body) ? body.join(CRLF) : body;
+  const bodyLines = rawBodyText.split(/\r?\n/);
+
+  const stuffedBodyLines = bodyLines.map((line) => (line.startsWith(".") ? "." + line : line));
+
+  return headerLines.join(CRLF) + CRLF + CRLF + stuffedBodyLines.join(CRLF) + CRLF + "." + CRLF;
+}
+
 export class SmtpNotificationAdapter implements NotificationAdapter {
   readonly transport = "smtp" as const;
 
@@ -313,29 +337,28 @@ export class SmtpNotificationAdapter implements NotificationAdapter {
         ? "Open the link below to reset your password. The link expires on"
         : "Open the link below to verify your account. The link expires on";
 
-      await this.writeLine(
-        socket,
-        [
-          `From: ${this.config.fromAddress}`,
-          `To: ${message.to}`,
-          `Subject: ${subject}`,
-          `Date: ${new Date().toUTCString()}`,
-          `Message-ID: ${messageId}`,
-          `MIME-Version: 1.0`,
-          `Content-Type: text/plain; charset=utf-8`,
-          ``,
-          `Welcome to Hush Mail.`,
-          ``,
-          actionText,
-          `${message.expiresAt.toUTCString()}.`,
-          ``,
-          `${message.verificationUrl}`,
-          ``,
-          `If you did not request this message, you can safely ignore it.`,
-          ``,
-          `.`,
-        ].join(CRLF) + CRLF,
-      );
+      const headers = [
+        `From: ${this.config.fromAddress}`,
+        `To: ${message.to}`,
+        `Subject: ${subject}`,
+        `Date: ${new Date().toUTCString()}`,
+        `Message-ID: ${messageId}`,
+        `MIME-Version: 1.0`,
+        `Content-Type: text/plain; charset=utf-8`,
+      ];
+
+      const body = [
+        `Welcome to Hush Mail.`,
+        ``,
+        actionText,
+        `${message.expiresAt.toUTCString()}.`,
+        ``,
+        `${message.verificationUrl}`,
+        ``,
+        `If you did not request this message, you can safely ignore it.`,
+      ];
+
+      await this.writeLine(socket, encodeSmtpDataPayload(headers, body));
       await expectReply("DATA", [250]);
 
       await this.writeLine(socket, `QUIT${CRLF}`);
