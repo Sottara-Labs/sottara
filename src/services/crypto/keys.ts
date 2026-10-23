@@ -36,7 +36,7 @@ export class KeyUsageError extends Error {
 }
 
 const AES_ALGORITHM = { name: "AES-GCM", length: 256 } as const;
-const SIGNING_ALGORITHM = { name: "ECDSA", namedCurve: "P-256" } as const;
+const SIGNING_ALGORITHM = { name: "Ed25519" } as const;
 const AES_KEY_BYTES = 32;
 
 /** Copy bytes into a fresh ArrayBuffer (an unconditionally valid BufferSource). */
@@ -93,22 +93,30 @@ export async function createUnwrappingKey(raw: Uint8Array): Promise<CryptoKey> {
 
 /** A freshly generated signing key pair with least-privilege usages. */
 export interface SigningKeyPair {
-  /** ECDSA P-256 private key, sign-only, non-extractable. */
+  /** Ed25519 private key, sign-only, non-extractable. */
   readonly signingKey: CryptoKey;
-  /** ECDSA P-256 public key, verify-only (safe to publish). */
+  /** Ed25519 public key, verify-only, extractable (safe to publish). */
   readonly verificationKey: CryptoKey;
 }
 
 /**
- * Generate an ECDSA P-256 signing pair. The private key can only `sign` and is
- * non-extractable; the public key can only `verify`. Session-lived.
+ * Generate an Ed25519 signing pair, matching the algorithm the envelope
+ * signature schema and verification path require. The private key can only
+ * `sign` and is non-extractable; the public key can only `verify`.
+ * Session-lived.
  */
 export async function createSigningKeyPair(): Promise<SigningKeyPair> {
-  const pair = (await crypto.subtle.generateKey(SIGNING_ALGORITHM, false, [
+  // WebCrypto applies one extractability flag to both halves of the pair, so
+  // generate extractable only to re-import the private half non-extractable.
+  const pair = (await crypto.subtle.generateKey(SIGNING_ALGORITHM, true, [
     "sign",
     "verify",
   ])) as CryptoKeyPair;
-  return { signingKey: pair.privateKey, verificationKey: pair.publicKey };
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", pair.privateKey);
+  const signingKey = await crypto.subtle.importKey("pkcs8", pkcs8, SIGNING_ALGORITHM, false, [
+    "sign",
+  ]);
+  return { signingKey, verificationKey: pair.publicKey };
 }
 
 /**

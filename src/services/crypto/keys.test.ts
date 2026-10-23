@@ -84,7 +84,7 @@ describe("least-privilege key factories", () => {
     const { signingKey, verificationKey } = await createSigningKeyPair();
     const data = encoder.encode("bind this");
     const signature = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
+      { name: "Ed25519" },
       signingKey,
       data as BufferSource,
     );
@@ -94,7 +94,7 @@ describe("least-privilege key factories", () => {
     expect(imported.usages).toEqual(["verify"]);
 
     const ok = await crypto.subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
+      { name: "Ed25519" },
       imported,
       signature,
       data as BufferSource,
@@ -105,11 +105,7 @@ describe("least-privilege key factories", () => {
   it("fails predictably when a verification key is used to sign", async () => {
     const { verificationKey } = await createSigningKeyPair();
     await expect(
-      crypto.subtle.sign(
-        { name: "ECDSA", hash: "SHA-256" },
-        verificationKey,
-        new Uint8Array(8) as BufferSource,
-      ),
+      crypto.subtle.sign({ name: "Ed25519" }, verificationKey, new Uint8Array(8) as BufferSource),
     ).rejects.toThrow();
   });
 });
