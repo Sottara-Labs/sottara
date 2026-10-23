@@ -13,7 +13,7 @@ describe("services/crypto/signing-preimage", () => {
       operation: "envelope_signature",
     });
 
-    const expectedString = `${STEALTH_DOMAIN_TAG}:${STEALTH_PROTOCOL_VERSION}:testnet:envelope_signature:{"key":"value"}`;
+    const expectedString = `stealth-preimage-v2|21:${STEALTH_DOMAIN_TAG}|2:${STEALTH_PROTOCOL_VERSION}|7:testnet|18:envelope_signature|15:{"key":"value"}`;
     const expectedBytes = new TextEncoder().encode(expectedString);
 
     expect(result).toEqual(expectedBytes);
@@ -26,7 +26,7 @@ describe("services/crypto/signing-preimage", () => {
       version: "v2",
     });
 
-    const expectedString = `${STEALTH_DOMAIN_TAG}:v2:public:op:data`;
+    const expectedString = `stealth-preimage-v2|21:${STEALTH_DOMAIN_TAG}|2:v2|6:public|2:op|4:data`;
     expect(new TextDecoder().decode(result)).toBe(expectedString);
   });
 
