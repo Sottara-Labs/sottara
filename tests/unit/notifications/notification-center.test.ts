@@ -105,6 +105,27 @@ describe("useNotificationCenter", () => {
     expect(stored[0].id).toBe("mail:m2");
   });
 
+  it("surfaces notifications that arrive in the first poll when nothing was persisted", () => {
+    const { result, rerender } = renderHook((props) => useNotificationCenter(props), {
+      initialProps: { ...baseProps, mail: [] as MailboxDescriptor[] },
+    });
+
+    expect(result.current.notifications).toEqual([]);
+
+    rerender({ ...baseProps, mail: [mailItem("m1")] });
+
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0]).toMatchObject({
+      id: "mail:m1",
+      category: "mail",
+      read: false,
+    });
+
+    const stored = JSON.parse(localStorage.getItem(storageKey) ?? "[]");
+    expect(stored).toHaveLength(1);
+    expect(stored[0].id).toBe("mail:m1");
+  });
+
   it("markAllRead marks every notification read and persists the state", () => {
     const { result, rerender } = renderHook((props) => useNotificationCenter(props), {
       initialProps: { ...baseProps, mail: [mailItem("m1")] },

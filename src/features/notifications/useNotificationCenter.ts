@@ -25,9 +25,11 @@ export function useNotificationCenter({
 }) {
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const seen = useRef(new Set<string>());
+  const baselineConsumed = useRef(false);
 
   useEffect(() => {
     seen.current = new Set();
+    baselineConsumed.current = false;
     if (!actor) return setNotifications([]);
     try {
       const stored = JSON.parse(localStorage.getItem(keyFor(actor)) ?? "[]") as InAppNotification[];
@@ -49,8 +51,14 @@ export function useNotificationCenter({
         (item) => ["requests" as const, `request:${item.requestId}`, item.createdAt] as const,
       ),
     ];
-    // First live snapshot is a baseline, avoiding a notification flood on sign-in.
-    if (seen.current.size === 0) {
+    // The persisted snapshot is the baseline when one exists. Otherwise the
+    // snapshot observed on the first pass (the load response) stands in for it,
+    // avoiding a notification flood on sign-in. Consume the baseline exactly
+    // once so that later snapshots — including notifications arriving in the
+    // first poll after an empty sign-in state — are surfaced instead of being
+    // adopted silently.
+    if (!baselineConsumed.current && seen.current.size === 0) {
+      baselineConsumed.current = true;
       incoming.forEach(([, id]) => seen.current.add(id));
       return;
     }
