@@ -281,16 +281,24 @@ export class SmtpNotificationAdapter implements NotificationAdapter {
       await this.writeLine(socket, `EHLO stealth.mail${CRLF}`);
       await expectReply("EHLO", [250]);
 
+      let startTlsSucceeded = false;
       // STARTTLS upgrade when configured (never AUTH in the clear).
       if (this.config.startTls && !secure && socket.startTls) {
         await this.writeLine(socket, `STARTTLS${CRLF}`);
         await expectReply("STARTTLS", [220]);
         await socket.startTls();
+        startTlsSucceeded = true;
         await this.writeLine(socket, `EHLO stealth.mail${CRLF}`);
         await expectReply("EHLO", [250]);
       }
 
       if (this.config.username && this.config.password) {
+        if (!secure && !startTlsSucceeded) {
+          throw new SmtpError(
+            "Refusing AUTH over an unencrypted connection: TLS (secure or STARTTLS) is required",
+            { command: "AUTH" },
+          );
+        }
         const credentials = base64(`\u0000${this.config.username}\u0000${this.config.password}`);
         await this.writeLine(socket, `AUTH PLAIN ${credentials}${CRLF}`);
         await expectReply("AUTH", [235]);
