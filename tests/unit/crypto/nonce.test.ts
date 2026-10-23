@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   decodeNonce,
@@ -7,14 +7,9 @@ import {
   validateNonceLength,
   NONCE_LENGTHS,
 } from "../../../src/services/crypto/nonce";
-import { setCryptoTestVectors, resetCryptoTestVectors } from "../../../src/services/crypto/testing";
+import { withCryptoTestVectors } from "../../../src/services/crypto/testing";
 
 describe("secure nonce helpers (#1694)", () => {
-  afterEach(() => {
-    // Always restore production randomness.
-    resetCryptoTestVectors();
-  });
-
   it("derives nonce length from the algorithm suite", () => {
     for (const algorithm of Object.keys(NONCE_LENGTHS) as (keyof typeof NONCE_LENGTHS)[]) {
       expect(generateNonce(algorithm).length).toBe(NONCE_LENGTHS[algorithm]);
@@ -27,19 +22,22 @@ describe("secure nonce helpers (#1694)", () => {
     expect(a).not.toEqual(b);
   });
 
-  it("accepts a deterministic injection for tests without weakening production", () => {
+  it("accepts a deterministic injection for tests without weakening production", async () => {
     let counter = 0;
-    setCryptoTestVectors({
-      getRandomValues: (array: Uint8Array) => {
-        for (let i = 0; i < array.length; i += 1) array[i] = (counter + i) & 0xff;
-        counter += 1;
-        return array;
+    await withCryptoTestVectors(
+      {
+        getRandomValues: (array: Uint8Array) => {
+          for (let i = 0; i < array.length; i += 1) array[i] = (counter + i) & 0xff;
+          counter += 1;
+          return array;
+        },
       },
-    });
-
-    const nonce = generateNonce("AES-256-GCM");
-    expect(nonce.length).toBe(12);
-    expect([...nonce]).toEqual(Array.from({ length: 12 }, (_, i) => i & 0xff));
+      () => {
+        const nonce = generateNonce("AES-256-GCM");
+        expect(nonce.length).toBe(12);
+        expect([...nonce]).toEqual(Array.from({ length: 12 }, (_, i) => i & 0xff));
+      },
+    );
   });
 
   it("round-trips nonce encode/decode", () => {
