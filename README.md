@@ -133,9 +133,6 @@ The system is designed to keep message bodies and attachments out of public ledg
 
 Runtime configuration is loaded and validated by `src/config/loader.ts` (`loadRuntimeConfig`). Variables can be configured in `.env` (copy from [`.env.example`](.env.example) for local development) or bound via environment secrets in deployment.
 
-| Variable group | Key variables                                                              |
-| -------------- | -------------------------------------------------------------------------- |
-| Storage (KV)   | `SOTTARA_KV_LOCAL_ID`, `SOTTARA_KV_PREVIEW_ID`, `SOTTARA_KV_PRODUCTION_ID` |
 For the production secret inventory, rotation cadence, and emergency revocation procedures, see the [Secrets Inventory & Operational Procedures](docs/deployment/SECRETS.md).
 
 | Variable group         | Key variables                                                                                                                                                                                                                                                                                                                       | Description                                                                                                                                                                                                   |
