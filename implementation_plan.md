@@ -334,70 +334,70 @@ We will enforce a `reason` parameter on all mutation routes and check session ag
 
 ### [Domain & Database Model]
 
-#### [MODIFY] [domain.ts](file:///home/zapha/Grantfox/stealth/src/server/api/domain.ts)
+#### [MODIFY] [domain.ts](src/server/api/domain.ts)
 
 - Add `inviteSchema` and `Invite` type.
 
-#### [MODIFY] [context.ts](file:///home/zapha/Grantfox/stealth/src/server/api/context.ts)
+#### [MODIFY] [context.ts](src/server/api/context.ts)
 
 - Import `inviteSchema` and register it with `registerRecordSchema("invite", 1, inviteSchema)`.
 
-#### [MODIFY] [repository.ts](file:///home/zapha/Grantfox/stealth/src/server/api/repository.ts)
+#### [MODIFY] [repository.ts](src/server/api/repository.ts)
 
 - Add `getInvite`, `setInvite`, `listInvites` to the `ApiRepository` interface.
 - Implement these methods in `ValidatedApiRepository` and `RetryableApiRepository`.
 - Add `getInvite`, `setInvite`, `listInvites` to `RETRY_SAFE_OPERATIONS`.
 
-#### [MODIFY] [memory-repository.ts](file:///home/zapha/Grantfox/stealth/src/server/api/memory-repository.ts)
+#### [MODIFY] [memory-repository.ts](src/server/api/memory-repository.ts)
 
 - Implement `getInvite`, `setInvite`, and `listInvites` using an in-memory Map.
 
-#### [MODIFY] [kv-repository.ts](file:///home/zapha/Grantfox/stealth/src/server/api/kv-repository.ts)
+#### [MODIFY] [kv-repository.ts](src/server/api/kv-repository.ts)
 
 - Implement `getInvite`, `setInvite`, and `listInvites` using Cloudflare KV.
 
 ### [Authorization & Auditing]
 
-#### [NEW] [admin.ts](file:///home/zapha/Grantfox/stealth/src/server/api/authorization/admin.ts)
+#### [NEW] [admin.ts](src/server/api/authorization/admin.ts)
 
 - Implement `requireAdminRole` guard (checking `STEALTH_ADMIN_ADDRESSES` and verifying session cookie freshness).
 - Implement `recordAdminMutationAudit` and `maskUserData` to filter sensitive user details (emails/secrets) before logging.
 
-#### [MODIFY] [index.ts](file:///home/zapha/Grantfox/stealth/src/server/api/authorization/index.ts)
+#### [MODIFY] [index.ts](src/server/api/authorization/index.ts)
 
 - Export admin authorization helpers.
 
 ### [API Routes]
 
-#### [NEW] [index.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/invites/index.ts)
+#### [NEW] [index.ts](src/routes/api/v1/admin/invites/index.ts)
 
 - GET list, POST create invite.
 
-#### [NEW] [revoke.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/invites/revoke.ts)
+#### [NEW] [revoke.ts](src/routes/api/v1/admin/invites/revoke.ts)
 
 - POST revoke invite.
 
-#### [NEW] [lookup.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/users/lookup.ts)
+#### [NEW] [lookup.ts](src/routes/api/v1/admin/users/lookup.ts)
 
 - GET user lookup (by id, email, address, or username) with email masking.
 
-#### [NEW] [suspend.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/users/$userId/suspend.ts)
+#### [NEW] [suspend.ts](src/routes/api/v1/admin/users/$userId/suspend.ts)
 
 - POST suspend user with compare-and-swap update logic.
 
-#### [NEW] [reactivate.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/users/$userId/reactivate.ts)
+#### [NEW] [reactivate.ts](src/routes/api/v1/admin/users/$userId/reactivate.ts)
 
 - POST reactivate user.
 
-#### [NEW] [retry.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/users/$userId/provision/retry.ts)
+#### [NEW] [retry.ts](src/routes/api/v1/admin/users/$userId/provision/retry.ts)
 
 - POST retry account provisioning.
 
-#### [NEW] [health.ts](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/health.ts)
+#### [NEW] [health.ts](src/routes/api/v1/admin/health.ts)
 
 - GET administrator service-health readiness view.
 
-#### [MODIFY] [dlq, jobs, funding routes](file:///home/zapha/Grantfox/stealth/src/routes/api/v1/admin/)
+#### [MODIFY] [dlq, jobs, funding routes](src/routes/api/v1/admin/)
 
 - Update existing routes to require admin RBAC guard, reason body field for mutations, and log mutation audits.
 
