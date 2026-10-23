@@ -8,20 +8,100 @@ import { processVerificationMailQueue } from "./services/notifications/worker";
 
 export { StealthCoordinator } from "./server/api/stealth-coordinator";
 
+const DEFAULT_ALLOWED_HOSTS = new Set([
+  "betasmail.com",
+  "www.betasmail.com",
+  "app.betasmail.com",
+  "app-preview.betasmail.com",
+  "localhost",
+  "127.0.0.1",
+]);
+
+function isAllowedHost(host: string, env: Record<string, string | undefined>): boolean {
+  const hostWithoutPort = host.split(":")[0].toLowerCase();
+  if (
+    DEFAULT_ALLOWED_HOSTS.has(host.toLowerCase()) ||
+    DEFAULT_ALLOWED_HOSTS.has(hostWithoutPort) ||
+    hostWithoutPort === "localhost" ||
+    hostWithoutPort === "127.0.0.1"
+  ) {
+    return true;
+  }
+  if (env.STEALTH_APP_URL) {
+    try {
+      const parsed = new URL(env.STEALTH_APP_URL);
+      if (
+        parsed.host.toLowerCase() === host.toLowerCase() ||
+        parsed.hostname.toLowerCase() === hostWithoutPort
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore invalid URL
+    }
+  }
+  if (env.STEALTH_CORS_ALLOWED_ORIGINS) {
+    const origins = env.STEALTH_CORS_ALLOWED_ORIGINS.split(",").map((s) => s.trim());
+    for (const origin of origins) {
+      try {
+        const parsed = new URL(origin);
+        if (
+          parsed.host.toLowerCase() === host.toLowerCase() ||
+          parsed.hostname.toLowerCase() === hostWithoutPort
+        ) {
+          return true;
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  }
+  return false;
+}
+
+function getCanonicalOrigin(env: Record<string, string | undefined>): string {
+  if (env.STEALTH_APP_URL) {
+    return env.STEALTH_APP_URL.replace(/\/+$/, "");
+  }
+  const profile = env.STEALTH_ENV ?? env.NODE_ENV;
+  if (profile === "preview" || profile === "staging") {
+    return "https://app-preview.betasmail.com";
+  }
+  return "https://app.betasmail.com";
+}
+
 export default {
   async fetch(...args: Parameters<typeof handler.fetch>) {
     const [request] = args;
+    const env =
+      (args[1] as Record<string, string | undefined>) ??
+      (typeof process !== "undefined" ? process.env : {});
     const url = new URL(request.url);
     const host = request.headers.get("host") || url.host;
 
+    // Validate Host header against explicit allowlist before routing
+    if (!isAllowedHost(host, env)) {
+      return applySecurityHeaders(
+        new Response("Invalid Host header", {
+          status: 400,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+          },
+        }),
+      );
+    }
+
+    const canonicalOrigin = getCanonicalOrigin(env);
+
     // 1. HTTP to HTTPS redirect in production-like envs (Cloudflare x-forwarded-proto)
     const proto = request.headers.get("x-forwarded-proto");
-    if (proto === "http" && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+    if (proto === "http" && !isLocal) {
       return applySecurityHeaders(
         new Response(null, {
           status: 301,
           headers: {
-            Location: `https://${host}${url.pathname}${url.search}`,
+            Location: `${canonicalOrigin}${url.pathname}${url.search}`,
           },
         }),
       );
@@ -29,18 +109,7 @@ export default {
 
     // 2. Intercept and serve SEP-1 stellar.toml dynamically
     if (url.pathname === "/.well-known/stellar.toml") {
-      const isPreview = host.includes("preview") || host.includes("staging");
-      const isDev = host.includes("localhost") || host.includes("127.0.0.1");
-
-      let fedServer: string;
-      if (isDev) {
-        fedServer = `http://${host}/api/v1/federation`;
-      } else if (isPreview) {
-        fedServer = `https://app-preview.betasmail.com/api/v1/federation`;
-      } else {
-        fedServer = `https://app.betasmail.com/api/v1/federation`;
-      }
-
+      const fedServer = `${canonicalOrigin}/api/v1/federation`;
       const tomlContent = [
         `# Stellar TOML Configuration for Hush Mail`,
         `FEDERATION_SERVER="${fedServer}"`,
@@ -63,7 +132,7 @@ export default {
         new Response(null, {
           status: 301,
           headers: {
-            Location: `https://app.betasmail.com${url.pathname}${url.search}`,
+            Location: `${canonicalOrigin}${url.pathname}${url.search}`,
           },
         }),
       );

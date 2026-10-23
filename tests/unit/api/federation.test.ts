@@ -172,7 +172,50 @@ describe("BETA-090: Stellar Federation (SEP-2) & Root Redirects / TOML", () => {
         },
       });
 
+      const response = await serverEntry.fetch(request, { STEALTH_ENV: "preview" });
+      expect(response.status).toBe(200);
+      const text = await response.text();
+      expect(text).toContain(
+        'FEDERATION_SERVER="https://app-preview.betasmail.com/api/v1/federation"',
+      );
+    });
+
+    it("rejects a forged Host header on HTTP redirect and never includes it in Location", async () => {
+      const request = new Request("http://evil.example/login", {
+        headers: {
+          "x-forwarded-proto": "http",
+          host: "evil.example",
+        },
+      });
+
       const response = await serverEntry.fetch(request);
+      expect(response.status).toBe(400);
+      expect(response.headers.get("Location")).toBeNull();
+    });
+
+    it("rejects a forged Host header on stellar.toml and never includes it in TOML content", async () => {
+      const request = new Request("https://evil.example/.well-known/stellar.toml", {
+        headers: {
+          host: "evil.example",
+        },
+      });
+
+      const response = await serverEntry.fetch(request);
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).not.toContain("evil.example");
+      expect(text).not.toContain("FEDERATION_SERVER");
+    });
+
+    it("derives preview federation server URL from config, never from host string", async () => {
+      // Even when host is app.betasmail.com, preview config directs federation to app-preview
+      const request = new Request("https://app.betasmail.com/.well-known/stellar.toml", {
+        headers: {
+          host: "app.betasmail.com",
+        },
+      });
+
+      const response = await serverEntry.fetch(request, { STEALTH_ENV: "preview" });
       expect(response.status).toBe(200);
       const text = await response.text();
       expect(text).toContain(
