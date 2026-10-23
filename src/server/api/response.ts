@@ -1,5 +1,15 @@
 import { normalizeApiError, type RetryClassification } from "./errors";
-import { apiCorsPolicy, applyCors, corsEarlyResponse, csrfEarlyResponse } from "./cors";
+import {
+  apiCorsPolicy,
+  applyCors,
+  corsEarlyResponse,
+  corsPolicyFromConfig,
+  corsPolicyFromEnv,
+  csrfEarlyResponse,
+  type CorsPolicy,
+} from "./cors";
+import { requestEnvStorage } from "./context";
+import { loadRuntimeConfig } from "../../config";
 import { deriveSupportId } from "./logging";
 
 interface ApiMeta {
@@ -233,23 +243,74 @@ export function apiFailure(request: Request, caught: unknown) {
   });
 }
 
+export function resolveRequestEnv(
+  request?: Request,
+  explicitEnv?: Record<string, unknown>,
+): Record<string, unknown> {
+  if (explicitEnv && Object.keys(explicitEnv).length > 0) {
+    return explicitEnv;
+  }
+  if (request) {
+    const reqAny = request as any;
+    if (reqAny.__env && Object.keys(reqAny.__env).length > 0) {
+      return reqAny.__env;
+    }
+    if (reqAny.env && Object.keys(reqAny.env).length > 0) {
+      return reqAny.env;
+    }
+  }
+  const fromStorage = requestEnvStorage.getStore();
+  if (fromStorage && Object.keys(fromStorage).length > 0) {
+    return fromStorage;
+  }
+  return typeof process !== "undefined" ? (process.env as Record<string, unknown>) : {};
+}
+
+export function computeRequestCorsPolicy(
+  request: Request,
+  explicitEnv?: Record<string, unknown> | CorsPolicy,
+): { policy: CorsPolicy; profile?: string } {
+  if (explicitEnv && "allowedOrigins" in explicitEnv) {
+    const policy = explicitEnv as CorsPolicy;
+    return { policy, profile: policy.profile };
+  }
+
+  const env = resolveRequestEnv(request, explicitEnv as Record<string, unknown> | undefined);
+  try {
+    const config = loadRuntimeConfig({ env });
+    return {
+      policy: corsPolicyFromConfig(config),
+      profile: config.profile,
+    };
+  } catch {
+    const policy = corsPolicyFromEnv(env as Record<string, string | undefined>);
+    return {
+      policy,
+      profile: policy.profile,
+    };
+  }
+}
+
 export async function handleApiRequest(
   request: Request,
   handler: () => Response | Promise<Response>,
+  requestEnv?: Record<string, unknown> | CorsPolicy,
 ) {
-  const earlyResponse = corsEarlyResponse(request, apiCorsPolicy);
+  const { policy, profile } = computeRequestCorsPolicy(request, requestEnv);
+
+  const earlyResponse = corsEarlyResponse(request, policy);
   if (earlyResponse) {
     return earlyResponse;
   }
-  const csrfResponse = csrfEarlyResponse(request, apiCorsPolicy);
+  const csrfResponse = csrfEarlyResponse(request, policy, profile);
   if (csrfResponse) {
     return csrfResponse;
   }
 
   try {
-    return applyCors(request, enforceJsonSecurityHeaders(await handler()), apiCorsPolicy);
+    return applyCors(request, enforceJsonSecurityHeaders(await handler()), policy);
   } catch (error) {
-    return applyCors(request, apiFailure(request, error), apiCorsPolicy);
+    return applyCors(request, apiFailure(request, error), policy);
   }
 }
 
