@@ -139,9 +139,26 @@ export const verificationPolicySchema = z.object({
 });
 export type VerificationPolicy = z.infer<typeof verificationPolicySchema>;
 
+/**
+ * Strict mailbox address grammar for notification senders and recipients (RFC 5321).
+ * Rejects CRLF, ASCII control characters, angle brackets (<>), and null bytes
+ * to eliminate header injection and envelope syntax corruption.
+ */
+export const mailboxAddressSchema = z
+  .string()
+  .min(1, "Notification from-address cannot be empty")
+  .refine(
+    (addr) => !/[\r\n\0\x00-\x1F\x7F<>]/.test(addr),
+    "Notification from-address cannot contain control characters, CRLF, or angle brackets",
+  )
+  .refine(
+    (addr) => /^[^\s@<>]+@[^\s@<>]+$/.test(addr),
+    "Notification from-address must be a valid mailbox address (user@domain)",
+  );
+
 export const notificationsConfigSchema = z.object({
   transport: notificationTransportSchema,
-  fromAddress: z.string().min(1, "Notification from-address cannot be empty"),
+  fromAddress: mailboxAddressSchema,
   verification: verificationPolicySchema,
   smtp: smtpConfigSchema,
 });
@@ -189,7 +206,7 @@ export const publicConfigSchema = z.object({
   origin: originConfigSchema,
   notifications: z.object({
     transport: notificationTransportSchema,
-    fromAddress: z.string(),
+    fromAddress: mailboxAddressSchema,
     verification: verificationPolicySchema,
     smtp: z.object({
       host: z.string(),
