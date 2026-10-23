@@ -487,7 +487,7 @@ export async function openEnvelope(
       contentCommitment: commitment,
       version: payload.version,
       algorithm,
-      senderVerified: signatureVerified || sender.startsWith("G"),
+      senderVerified: signatureVerified,
       signatureVerified,
       signerAddress,
       recipientBound: true,
