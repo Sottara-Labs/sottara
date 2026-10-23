@@ -117,6 +117,60 @@ describe("identity migration runner", () => {
       expect(report.ok).toBe(false);
       expect(await storage.get("user:id:u_1")).toEqual(seeded);
     });
+
+    it("rejects an unknown --resume-after cursor before any mutation", async () => {
+      const storage = new InMemoryMigrationStorage();
+      const user1 = wrapEnvelope(validUser("u_1"), 1);
+      const user2 = wrapEnvelope(validUser("u_2"), 1);
+      storage.seed("user:id:u_1", user1);
+      storage.seed("user:id:u_2", user2);
+
+      // Unknown key with known prefix
+      const report = await forward(storage, [v2UserFamily()], {
+        approval: "approved",
+        resumeAfter: "user:id:nonexistent",
+      });
+      expect(report.ok).toBe(false);
+      expect(report.failureKind).toBe("precondition_failed");
+      expect(report.families[0].errors[0]).toContain("unknown --resume-after cursor");
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toEqual(user2);
+
+      // Cursor not belonging to any family prefix
+      const wrongPrefix = await forward(storage, [v2UserFamily()], {
+        approval: "approved",
+        resumeAfter: "other:id:123",
+      });
+      expect(wrongPrefix.ok).toBe(false);
+      expect(wrongPrefix.failureKind).toBe("precondition_failed");
+      expect(wrongPrefix.families[0].errors[0]).toContain("unknown --resume-after cursor");
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toEqual(user2);
+    });
+
+    it("resumes immediately after a valid cursor", async () => {
+      const storage = new InMemoryMigrationStorage();
+      const user1 = wrapEnvelope(validUser("u_1"), 1);
+      const user2 = wrapEnvelope(validUser("u_2"), 1);
+      const user3 = wrapEnvelope(validUser("u_3"), 1);
+      storage.seed("user:id:u_1", user1);
+      storage.seed("user:id:u_2", user2);
+      storage.seed("user:id:u_3", user3);
+
+      const report = await forward(storage, [v2UserFamily()], {
+        approval: "approved",
+        resumeAfter: "user:id:u_1",
+      });
+      expect(report.ok).toBe(true);
+      const user = report.families.find((f) => f.family === "user")!;
+      expect(user.resumed).toBe(true);
+      expect(user.changed).toBe(2);
+
+      // u_1 untouched (v1), u_2 and u_3 migrated to v2
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toMatchObject({ $v: 2, displayName: "" });
+      expect(await storage.get("user:id:u_3")).toMatchObject({ $v: 2, displayName: "" });
+    });
   });
 
   describe("rollback", () => {
@@ -124,6 +178,65 @@ describe("identity migration runner", () => {
       const report = await rollback(new InMemoryMigrationStorage(), identityRecordFamilies, {});
       expect(report.ok).toBe(false);
       expect(report.families[0].errors[0]).toContain("--target-version");
+    });
+
+    it("rejects an unknown --resume-after cursor before any mutation", async () => {
+      const storage = new InMemoryMigrationStorage();
+      const user1 = wrapEnvelope({ ...validUser("u_1"), displayName: "Al" }, 2);
+      const user2 = wrapEnvelope({ ...validUser("u_2"), displayName: "Bob" }, 2);
+      storage.seed("user:id:u_1", user1);
+      storage.seed("user:id:u_2", user2);
+
+      // Unknown key with known prefix
+      const report = await rollback(storage, [v2UserFamily()], {
+        targetVersion: 1,
+        approval: "approved",
+        resumeAfter: "user:id:nonexistent",
+      });
+      expect(report.ok).toBe(false);
+      expect(report.failureKind).toBe("precondition_failed");
+      expect(report.families[0].errors[0]).toContain("unknown --resume-after cursor");
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toEqual(user2);
+
+      // Cursor not belonging to any family prefix
+      const wrongPrefix = await rollback(storage, [v2UserFamily()], {
+        targetVersion: 1,
+        approval: "approved",
+        resumeAfter: "other:id:123",
+      });
+      expect(wrongPrefix.ok).toBe(false);
+      expect(wrongPrefix.failureKind).toBe("precondition_failed");
+      expect(wrongPrefix.families[0].errors[0]).toContain("unknown --resume-after cursor");
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toEqual(user2);
+    });
+
+    it("resumes immediately after a valid cursor on rollback", async () => {
+      const storage = new InMemoryMigrationStorage();
+      const user1 = wrapEnvelope({ ...validUser("u_1"), displayName: "Al" }, 2);
+      const user2 = wrapEnvelope({ ...validUser("u_2"), displayName: "Bob" }, 2);
+      const user3 = wrapEnvelope({ ...validUser("u_3"), displayName: "Charlie" }, 2);
+      storage.seed("user:id:u_1", user1);
+      storage.seed("user:id:u_2", user2);
+      storage.seed("user:id:u_3", user3);
+
+      const report = await rollback(storage, [v2UserFamily()], {
+        targetVersion: 1,
+        approval: "approved",
+        resumeAfter: "user:id:u_1",
+      });
+      expect(report.ok).toBe(true);
+      const user = report.families.find((f) => f.family === "user")!;
+      expect(user.resumed).toBe(true);
+      expect(user.changed).toBe(2);
+
+      // u_1 untouched (v2), u_2 and u_3 reverted to v1
+      expect(await storage.get("user:id:u_1")).toEqual(user1);
+      expect(await storage.get("user:id:u_2")).toMatchObject({ $v: 1 });
+      expect(await storage.get("user:id:u_2")).not.toHaveProperty("displayName");
+      expect(await storage.get("user:id:u_3")).toMatchObject({ $v: 1 });
+      expect(await storage.get("user:id:u_3")).not.toHaveProperty("displayName");
     });
 
     it("reverts v2 -> v1 with a backward transform and is restartable", async () => {

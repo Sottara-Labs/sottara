@@ -85,40 +85,90 @@ async function checksumKeys(storage: MigrationStorage, keys: string[]): Promise<
   return checksumValue(values);
 }
 
+interface PreflightFailure {
+  message: string;
+  failureKind: "precondition_failed" | "rollback_blocked" | "compatibility_failed";
+}
+
 async function preflight(
   storage: MigrationStorage,
   families: readonly IdentityRecordFamily[],
   options: MigrationRunOptions,
   command: "forward" | "rollback",
-): Promise<string | null> {
+): Promise<PreflightFailure | null> {
   const expected = options.expectedRegistryChecksum;
   const actual = registryChecksum(families);
-  if (expected && expected !== actual)
-    return "migration registry checksum does not match reviewed manifest";
-  if (options.approval !== "approved")
-    return "operator approval is required for mutating migrations";
+  if (expected && expected !== actual) {
+    return {
+      message: "migration registry checksum does not match reviewed manifest",
+      failureKind: "precondition_failed",
+    };
+  }
+  if (options.approval !== "approved") {
+    return {
+      message: "operator approval is required for mutating migrations",
+      failureKind: "precondition_failed",
+    };
+  }
+
+  if (options.resumeAfter) {
+    const matchingFamily = families.find((family) =>
+      options.resumeAfter!.startsWith(family.keyPrefix),
+    );
+    if (!matchingFamily) {
+      return {
+        message: `unknown --resume-after cursor ${fingerprintKey(options.resumeAfter)}`,
+        failureKind: "precondition_failed",
+      };
+    }
+    const keys = await storage.listKeys(matchingFamily.keyPrefix);
+    if (!keys.includes(options.resumeAfter)) {
+      return {
+        message: `unknown --resume-after cursor ${fingerprintKey(options.resumeAfter)}`,
+        failureKind: "precondition_failed",
+      };
+    }
+  }
 
   for (const family of families) {
     const failures = (await family.preconditions?.(storage)) ?? [];
-    if (failures.length) return `${family.name}: ${failures.join(", ")}`;
+    if (failures.length) {
+      return {
+        message: `${family.name}: ${failures.join(", ")}`,
+        failureKind: "precondition_failed",
+      };
+    }
     const keys = await storage.listKeys(family.keyPrefix);
     for (const key of keys) {
       const raw = await storage.get(key);
-      if (raw === null || raw === undefined)
-        return `${family.name}: missing value for ${fingerprintKey(key)}`;
+      if (raw === null || raw === undefined) {
+        return {
+          message: `${family.name}: missing value for ${fingerprintKey(key)}`,
+          failureKind: "precondition_failed",
+        };
+      }
       const { version } = readEnvelope(raw);
       if (version > family.currentVersion) {
-        return `${family.name}: incompatible schema version ${version} for ${fingerprintKey(key)}`;
+        return {
+          message: `${family.name}: incompatible schema version ${version} for ${fingerprintKey(key)}`,
+          failureKind: "compatibility_failed",
+        };
       }
       if (command === "forward" && version < family.currentVersion && !applyForward(family, raw)) {
-        return `${family.name}: missing forward migration step for ${fingerprintKey(key)}`;
+        return {
+          message: `${family.name}: missing forward migration step for ${fingerprintKey(key)}`,
+          failureKind: "precondition_failed",
+        };
       }
       if (
         command === "rollback" &&
         version > (options.targetVersion ?? 0) &&
         !applyBackward(family, raw, options.targetVersion ?? 0)
       ) {
-        return `${family.name}: rollback blocked: missing backward migration step for ${fingerprintKey(key)}`;
+        return {
+          message: `${family.name}: rollback blocked: missing backward migration step for ${fingerprintKey(key)}`,
+          failureKind: "rollback_blocked",
+        };
       }
     }
   }
@@ -165,13 +215,18 @@ export async function forward(
 ): Promise<MigrationReport> {
   const report = baseReport("forward", families);
   const preflightError = await preflight(storage, families, options, "forward");
-  if (preflightError) return failReport(report, families, preflightError, "precondition_failed");
+  if (preflightError) {
+    return failReport(report, families, preflightError.message, preflightError.failureKind);
+  }
   for (const family of families) {
     const familyReport = report.families.find((f) => f.family === family.name)!;
     const keys = await storage.listKeys(family.keyPrefix);
     familyReport.totalKeys = keys.length;
     familyReport.beforeChecksum = await checksumKeys(storage, keys);
-    const start = options.resumeAfter ? keys.indexOf(options.resumeAfter) + 1 : 0;
+    const start =
+      options.resumeAfter && options.resumeAfter.startsWith(family.keyPrefix)
+        ? keys.indexOf(options.resumeAfter) + 1
+        : 0;
     const batchKeys = keys.slice(start, options.batchSize ? start + options.batchSize : undefined);
     familyReport.resumed = start > 0;
     for (const key of batchKeys) {
@@ -228,13 +283,18 @@ export async function rollback(
 
   const report = baseReport("rollback", families);
   const preflightError = await preflight(storage, families, options, "rollback");
-  if (preflightError) return failReport(report, families, preflightError, "rollback_blocked");
+  if (preflightError) {
+    return failReport(report, families, preflightError.message, preflightError.failureKind);
+  }
   for (const family of families) {
     const familyReport = report.families.find((f) => f.family === family.name)!;
     const keys = await storage.listKeys(family.keyPrefix);
     familyReport.totalKeys = keys.length;
     familyReport.beforeChecksum = await checksumKeys(storage, keys);
-    const start = options.resumeAfter ? keys.indexOf(options.resumeAfter) + 1 : 0;
+    const start =
+      options.resumeAfter && options.resumeAfter.startsWith(family.keyPrefix)
+        ? keys.indexOf(options.resumeAfter) + 1
+        : 0;
     const batchKeys = keys.slice(start, options.batchSize ? start + options.batchSize : undefined);
     familyReport.resumed = start > 0;
     for (const key of batchKeys) {
