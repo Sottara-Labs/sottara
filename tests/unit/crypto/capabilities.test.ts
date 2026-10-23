@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +7,11 @@ import {
   CRYPTO_SUITE_REGISTRY,
   getCryptoCapabilities,
 } from "../../../src/services/crypto/capabilities";
+import {
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS,
+  MAX_BODY_BYTES,
+} from "../../../src/services/crypto/limits";
 
 describe("crypto capability descriptor (#1709)", () => {
   it("lists supported versions, suites, key formats, and limits", () => {
@@ -49,5 +56,26 @@ describe("crypto capability descriptor (#1709)", () => {
       limits: caps.limits,
     };
     expect(capabilitiesMatchRegistry(drifted)).toBe(false);
+  });
+
+  it("advertises exactly the limits the envelope path enforces (#296)", () => {
+    const caps = getCryptoCapabilities();
+    expect(caps.limits.maxBodyBytes).toBe(MAX_BODY_BYTES);
+    expect(caps.limits.maxAttachments).toBe(MAX_ATTACHMENTS);
+    expect(caps.limits.maxAttachmentBytes).toBe(MAX_ATTACHMENT_BYTES);
+    expect(CRYPTO_SUITE_REGISTRY.limits.maxBodyBytes).toBe(MAX_BODY_BYTES);
+    expect(CRYPTO_SUITE_REGISTRY.limits.maxAttachments).toBe(MAX_ATTACHMENTS);
+    expect(CRYPTO_SUITE_REGISTRY.limits.maxAttachmentBytes).toBe(MAX_ATTACHMENT_BYTES);
+  });
+
+  it("hardcodes no body or attachment size in capabilities.ts (#296)", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../../../src/services/crypto/capabilities.ts", import.meta.url)),
+      "utf-8",
+    );
+    expect(source).toContain('from "./limits"');
+    expect(source).not.toMatch(/65[_]?536|64\s*\*\s*1024/);
+    expect(source).not.toMatch(/16[_]?777[_]?216|16\s*\*\s*1024\s*\*\s*1024/);
+    expect(source).not.toMatch(/maxAttachments:\s*16\b/);
   });
 });
