@@ -7,6 +7,7 @@ import type {
   CalendarResponse,
   MailEvent,
 } from "./types";
+import { safeStorage } from "@/lib/storage";
 
 const STORAGE_KEY = "stealth-calendar-v1";
 
@@ -16,12 +17,8 @@ type CalendarSnapshot = {
 };
 
 function loadCalendar(): CalendarSnapshot {
-  if (typeof window === "undefined") {
-    return { calendars: defaultCalendars, events: defaultCalendarEvents };
-  }
-
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    const stored = safeStorage.getItem(STORAGE_KEY);
     if (!stored) return { calendars: defaultCalendars, events: defaultCalendarEvents };
     const parsed = JSON.parse(stored) as CalendarSnapshot;
     return {
@@ -37,7 +34,11 @@ export function useCalendar() {
   const [snapshot, setSnapshot] = useState<CalendarSnapshot>(loadCalendar);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    try {
+      safeStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // Storage denied or quota exceeded — keep calendar functional in memory.
+    }
   }, [snapshot]);
 
   const visibleCalendarIds = useMemo(
