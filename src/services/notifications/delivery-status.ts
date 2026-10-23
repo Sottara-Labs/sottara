@@ -103,6 +103,24 @@ export function canTransitionDeliveryState(from: DeliveryState, to: DeliveryStat
 }
 
 /**
+ * Validates transitions initiated by provider webhook events (e.g. delivered, complaint).
+ * Terminal events delivered, complaint, and unsubscribed can race ahead of internal queue
+ * states and are accepted from any non-terminal state (or complaint/unsubscribed from delivered).
+ */
+export function canTransitionProviderEvent(from: DeliveryState, to: DeliveryState): boolean {
+  if (from === to) return true;
+  if (!isTerminalDeliveryState(from)) {
+    if (to === "delivered" || to === "complaint" || to === "unsubscribed") {
+      return true;
+    }
+  }
+  if (from === "delivered" && (to === "complaint" || to === "unsubscribed")) {
+    return true;
+  }
+  return canTransitionDeliveryState(from, to);
+}
+
+/**
  * Classifies SMTP reply codes into retryable vs permanent failure classes.
  * Only the numeric class is retained — never the full reply text (may echo RCPT).
  */
