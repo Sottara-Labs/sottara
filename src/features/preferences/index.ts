@@ -1,5 +1,6 @@
 export { usePreferences } from "./usePreferences";
 export { useLayoutPreferences } from "./useLayoutPreferences";
+export { safeStorage } from "@/lib/storage";
 export { defaultPreferences } from "./types";
 export { defaultLayoutPreferences } from "./layout-types";
 export type {

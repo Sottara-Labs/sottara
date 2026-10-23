@@ -21,6 +21,19 @@ function Page({ name }: { name: string }) {
 }
 
 beforeEach(() => {
+  if (!window.localStorage) {
+    const store = new Map<string, string>();
+    const mockStorage = Object.create(Storage.prototype);
+    mockStorage.getItem = vi.fn((k: string) => store.get(k) ?? null);
+    mockStorage.setItem = vi.fn((k: string, v: string) => store.set(k, String(v)));
+    mockStorage.removeItem = vi.fn((k: string) => store.delete(k));
+    mockStorage.clear = vi.fn(() => store.clear());
+    Object.defineProperty(window, "localStorage", {
+      value: mockStorage,
+      configurable: true,
+      writable: true,
+    });
+  }
   window.localStorage.clear();
   vi.stubGlobal(
     "matchMedia",
