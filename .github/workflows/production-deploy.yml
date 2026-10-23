@@ -376,13 +376,13 @@ jobs:
         \ $i failed with status: $HTTP_STATUS\"\n    exit 1\n  fi\n  echo \"✓ Health\
         \ check $i passed (HTTP $HTTP_STATUS)\"\n  sleep 5\ndone\n\necho \"✓ All post-deployment\
         \ health checks passed\"\n"
+    - name: Download deployment log
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        name: production-deployment-log
+        path: docs/deployment
     - name: Verify no duplicate side effects
-      run: "echo \"Verifying no duplicate side effects...\"\n\n# Check deployment\
-        \ log for duplicate entries\nDEPLOYMENT_COUNT=$(grep \"production\" docs/deployment/deployment-log.txt\
-        \ | grep \"SUCCESS\" | wc -l)\n\nif [ \"$DEPLOYMENT_COUNT\" -gt 1 ]; then\n\
-        \  echo \"Multiple successful deployments detected\"\n  echo \"This is expected\
-        \ for rollback scenarios\"\nfi\n\necho \"✓ Deployment verification completed\"\
-        \n"
+      run: node scripts/ci/verify-no-duplicate-side-effects.mjs
     - name: Write verification gate result
       if: always()
       run: "STATUS=pass\nif [ \"${{ job.status }}\" != \"success\" ]; then STATUS=fail;\
