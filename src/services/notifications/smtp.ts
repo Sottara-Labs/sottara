@@ -72,6 +72,110 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 
 const isNodeRuntime = () => typeof process !== "undefined" && Boolean(process.versions?.node);
 
+/** Minimal interface for Cloudflare Workers Socket from cloudflare:sockets. */
+export interface CloudflareWorkerSocket {
+  readable: ReadableStream<Uint8Array | string>;
+  writable: WritableStream<Uint8Array | string>;
+  opened?: Promise<unknown>;
+  closed?: Promise<unknown>;
+  close(): Promise<void> | void;
+  startTls?(options?: unknown): CloudflareWorkerSocket | Promise<CloudflareWorkerSocket>;
+}
+
+/**
+ * Adapts a Cloudflare Workers connect() stream socket to the SmtpSocketLike event-driven interface.
+ * Pumps socket.readable through TextDecoder into data listeners, writes via socket.writable writer,
+ * and converts stream end / socket.closed rejections into transport errors.
+ */
+export function adaptWorkersSocketToSmtpSocketLike(socket: CloudflareWorkerSocket): SmtpSocketLike {
+  const listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+
+  const emit = (event: string, ...args: unknown[]) => {
+    for (const listener of listeners.get(event) ?? []) {
+      listener(...args);
+    }
+  };
+
+  const writer = socket.writable.getWriter();
+  const encoder = new TextEncoder();
+
+  let isClosed = false;
+  const markClosed = (error?: unknown) => {
+    if (isClosed) return;
+    isClosed = true;
+    if (error) {
+      emit("error", error instanceof Error ? error : new Error(String(error)));
+    }
+    emit("close");
+  };
+
+  if (socket.opened) {
+    socket.opened.catch((err) => markClosed(err));
+  }
+  if (socket.closed) {
+    socket.closed.then(
+      () => markClosed(),
+      (err) => markClosed(err),
+    );
+  }
+
+  // Pump readable stream to data events
+  (async () => {
+    try {
+      const reader = socket.readable.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value !== undefined) {
+          emit("data", value);
+        }
+      }
+      markClosed();
+    } catch (err) {
+      markClosed(err);
+    }
+  })();
+
+  return {
+    write: (data: string) => {
+      writer.write(encoder.encode(data)).catch((err) => markClosed(err));
+    },
+    end: () => {
+      writer
+        .close()
+        .catch(() => undefined)
+        .finally(() => {
+          Promise.resolve(socket.close()).catch(() => undefined);
+          markClosed();
+        });
+    },
+    destroy: () => {
+      writer.abort().catch(() => undefined);
+      Promise.resolve(socket.close()).catch(() => undefined);
+      markClosed();
+    },
+    setTimeout: () => undefined,
+    on: (event: string, listener: (...args: unknown[]) => void) => {
+      const bucket = listeners.get(event) ?? [];
+      bucket.push(listener);
+      listeners.set(event, bucket);
+      return undefined;
+    },
+    off: (event: string, listener: (...args: unknown[]) => void) => {
+      const bucket = listeners.get(event) ?? [];
+      listeners.set(
+        event,
+        bucket.filter((candidate) => candidate !== listener),
+      );
+    },
+    startTls: () => {
+      if (typeof socket.startTls === "function") {
+        return socket.startTls();
+      }
+    },
+  };
+}
+
 /**
  * Native socket factory: Node `net`/`tls` when running under Node (tests,
  * local tooling), Cloudflare Workers `connect()` otherwise.
@@ -103,21 +207,7 @@ export async function defaultSmtpSocketFactory(
     port: options.port,
     secureTransport: options.secure ? "on" : "starttls",
   });
-  return {
-    write: (data: string) => socket.write(data),
-    end: () => socket.close(),
-    destroy: () => socket.close(),
-    setTimeout: () => undefined,
-    on: (event: string, listener: (...args: unknown[]) => void) => {
-      if (event === "timeout") return socket;
-      socket.addEventListener(event, (eventData: unknown) => {
-        const payload = (eventData as { data?: unknown })?.data ?? eventData;
-        listener(payload);
-      });
-      return socket;
-    },
-    startTls: () => socket.startTls(),
-  } satisfies SmtpSocketLike;
+  return adaptWorkersSocketToSmtpSocketLike(socket as unknown as CloudflareWorkerSocket);
 }
 
 interface SmtpReply {
@@ -144,6 +234,9 @@ class ReplyStream {
     });
     socket.on("error", (error: unknown) => {
       this.fail(error instanceof Error ? error : new Error(String(error)));
+    });
+    socket.on("close", () => {
+      this.fail(new SmtpError("SMTP connection closed", { command: "socket" }));
     });
   }
 
