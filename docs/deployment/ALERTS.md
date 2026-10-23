@@ -458,8 +458,8 @@ or
 
 #### 4. Safe Non-Destructive Mitigation
 
-- Fail over to secondary fallback RPC endpoints configured in runtime environment (`STEALTH_SOROBAN_RPC_FALLBACK_URL`, `STEALTH_HORIZON_FALLBACK_URL`).
-- Adjust RPC timeout window from $1000\text{ms}$ to $3000\text{ms}$ temporarily during Stellar network congestion events.
+- No automatic RPC fail-over is implemented: services use the single endpoints read from `STEALTH_SOROBAN_RPC_URL` and `STEALTH_HORIZON_URL`. Update those variables to a healthy endpoint and redeploy, or wait for the upstream outage to recover before retrying.
+- RPC request timeouts are fixed in code rather than configurable through environment variables; pause non-critical RPC traffic instead of tuning the timeout during an incident.
 
 #### 5. Stop Conditions & Rollback
 
