@@ -34,8 +34,8 @@ Start with the root [README](README.md), then the [architecture map](docs/archit
 Use Node.js 24 or newer and Bun 1.3.14. Rust and the `wasm32v1-none` target are needed for Soroban contract work; the repository pins the Rust toolchain in `rust-toolchain.toml`.
 
 ```bash
-git clone https://github.com/Stellar-hush/hush.git
-cd hush
+git clone https://github.com/Sottara-Labs/sottara.git
+cd sottara
 bun install --frozen-lockfile
 cp .env.example .env
 bun run dev

@@ -219,7 +219,7 @@ export function HushShowcase() {
           </div>
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
             <a
-              href="https://github.com/Stellar-hush/hush"
+              href="https://github.com/Sottara-Labs/sottara"
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:-translate-y-0.5"

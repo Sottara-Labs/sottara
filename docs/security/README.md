@@ -27,4 +27,4 @@ Security evidence must be redacted. Never include session tokens, recovery codes
 
 ## Reporting a vulnerability
 
-Use GitHub’s [private security advisory form](https://github.com/Stellar-hush/hush/security/advisories/new) for sensitive reports. Do not publish exploit details or secrets in a public issue. Include affected commit or version, impact, reproduction conditions, and a minimal proof that contains no real user data.
+Use GitHub’s [private security advisory form](https://github.com/Sottara-Labs/sottara/security/advisories/new) for sensitive reports. Do not publish exploit details or secrets in a public issue. Include affected commit or version, impact, reproduction conditions, and a minimal proof that contains no real user data.

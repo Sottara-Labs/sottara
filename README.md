@@ -4,7 +4,7 @@
 
 > **Your inbox. Your rules. Proof for every delivery.**
 
-[![CI](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml)
+[![CI](https://github.com/Sottara-Labs/sottara/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Sottara-Labs/sottara/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 | Review item       | Current status                                                                                                                                                                           |
@@ -12,7 +12,7 @@
 | License           | MIT; see [`LICENSE`](LICENSE)                                                                                                                                                            |
 | Development       | Local application and testnet development paths; beta software                                                                                                                           |
 | Hosted experience | No verified public Sottara demo URL yet; the screenshot-like panel below is an illustration                                                                                              |
-| CI / deployment   | Check the [latest CI run](https://github.com/Stellar-sottara/sottara/actions/workflows/ci.yml) and [deployment notes](docs/deployment/README.md); CI success and deployment are separate |
+| CI / deployment   | Check the [latest CI run](https://github.com/Sottara-Labs/sottara/actions/workflows/ci.yml) and [deployment notes](docs/deployment/README.md); CI success and deployment are separate |
 | Contributions     | Public issues and pull requests are welcome; see [`CONTRIBUTING.md`](CONTRIBUTING.md)                                                                                                    |
 
 Sottara is an open-source beta for private email built around Stellar identity and programmable inbox access. Mailbox owners can decide how unfamiliar senders reach them: allow a verified identity, request approval, require postage, or block the sender. Encrypted message content stays off-chain; Stellar is used for identity and verifiable protocol actions.
@@ -85,7 +85,7 @@ These are implementation areas, not a promise that every feature is available in
 **Requirements:** Node.js 24 or newer and Bun 1.3.14. Rust is needed to build or test the Soroban contracts; use the version pinned in [`rust-toolchain.toml`](rust-toolchain.toml).
 
 ```sh
-git clone https://github.com/Stellar-sottara/sottara.git
+git clone https://github.com/Sottara-Labs/sottara.git
 cd sottara
 bun install --frozen-lockfile
 cp .env.example .env

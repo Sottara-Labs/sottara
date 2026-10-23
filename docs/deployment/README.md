@@ -12,9 +12,9 @@ snapshots now show “Hush.” The staging workflow now reads the CI release-gat
 but deployment stopped at its required-secret check because the staging credentials are not
 configured. Migrations, builds, and deployment did not run. An isolated temporary preview remains
 possible after the account holder authenticates Wrangler and accepts Cloudflare's Terms. No public
-demo URL has been confirmed. See the [green CI run](https://github.com/Stellar-hush/hush/actions/runs/37710828766)
-and [staging run](https://github.com/Stellar-hush/hush/actions/runs/37710828740), then check the
-[current Actions runs](https://github.com/Stellar-hush/hush/actions) before sharing an endpoint.
+demo URL has been confirmed. See the [CI workflow](https://github.com/Sottara-Labs/sottara/actions/workflows/ci.yml)
+and [staging workflow](https://github.com/Sottara-Labs/sottara/actions/workflows/staging-deploy.yml), then check the
+[current Actions runs](https://github.com/Sottara-Labs/sottara/actions) before sharing an endpoint.
 No verified public Hush demo URL is currently published.
 
 The web application is server-rendered through the Cloudflare Vite integration. Preview and
