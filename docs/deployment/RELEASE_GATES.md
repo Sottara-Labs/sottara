@@ -31,7 +31,9 @@ Main is not releasable while the summary verdict is `fail` or `blocked`.
 | `visual-e2e`            | Visual & Cross-Browser           | `platform/client`      | BETA-087           | `npm run test:visual` (committed Linux baselines)                                                                                                                                                                                   |
 | `security`              | Security & Dependency Review     | `security/platform`    | BETA-088           | dependency-review (skipped on fork PRs), Gitleaks                                                                                                                                                                                   |
 | `provenance`            | Provenance & Hashes              | `platform/release`     | BETA-088           | `npm run ci:collect-hashes`, `npm run ci:scan-artifacts`                                                                                                                                                                            |
+| `artifact-secrets`      | Provenance & Hashes              | `security/platform`    | BETA-088           | `node scripts/ci/scan-artifacts-for-secrets.mjs --dir artifacts`                                                                                                                                                                    |
 | `beta-soroban-live`     | Soroban Live Integration         | `platform/contracts`   | BETA-086           | Manual: `.github/workflows/beta-live-testnet.yml`                                                                                                                                                                                   |
+| `beta-live-workflow2`   | Workflow 2 Live Testnet          | `protocol/relay`       | BETA-050           | Manual: `.github/workflows/beta-live-testnet.yml`                                                                                                                                                                                   |
 
 Pinned versions: `scripts/ci/tool-versions.json`, `.node-version`, `rust-toolchain.toml`.
 
@@ -54,17 +56,20 @@ Do not commit `gate-result-*.json` (local CI artifacts). The OpenAPI generator m
 
 ### Release-gate semantics
 
-| Verdict   | Meaning                                                                                       | Releasable |
-| --------- | --------------------------------------------------------------------------------------------- | ---------- |
-| `pass`    | Every required gate artifact exists and genuinely passed                                      | yes        |
-| `blocked` | A required gate is explicitly blocked by a named unresolved dependency                        | no         |
-| `fail`    | A required gate failed, or a required gate result is missing (`missing required gate result`) | no         |
-| `skipped` | Only allowed for privileged `security` scans on fork PRs; never makes `releasable: true`      | no         |
+| Verdict   | Meaning                                                                                                                                   | Releasable |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `pass`    | Every required gate artifact exists and genuinely passed; absent operator-triggered live gates are reported `skipped`                     | yes\*      |
+| `blocked` | A required gate is explicitly blocked by a named unresolved dependency                                                                    | no         |
+| `fail`    | A required gate failed, or a required gate result is missing (`missing required gate result`)                                             | no         |
+| `skipped` | Allowed for privileged `security` scans on fork PRs and operator-triggered live gates absent from the run; never makes `releasable: true` | no         |
 
-Missing required artifacts are injected as `fail` with reason `missing required gate result`. They are never treated as pass.
+`*` `releasable: yes` requires the operator-triggered live gates to be recorded and passed; while they are missing the run reports `releasable: no`.
+
+Missing required artifacts are injected as `fail` with reason `missing required gate result`. Operator-triggered live gates (`beta-soroban-live`, `beta-live-workflow2`) are injected as `skipped` with reason `operator-triggered gate result not in this run` when their workflow run is not part of the summary. They are never treated as pass.
 
 Fork PRs skip privileged security scans. Live testnet gates require `workflow_dispatch`
-with the protected `testnet` GitHub Environment.
+with the protected `testnet` GitHub Environment; their results are recorded by that run,
+and a recorded failure blocks the summary like any other gate.
 
 ## Release Record
 

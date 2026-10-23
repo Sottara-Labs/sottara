@@ -5,7 +5,9 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   REQUIRED_GATES,
+  OPERATOR_GATES,
   MISSING_GATE_REASON,
+  MISSING_OPERATOR_GATE_REASON,
   assembleGates,
   buildReleaseSummary,
   isReleasable,
@@ -138,5 +140,101 @@ describe("BETA-088 release-gate summary", () => {
     expect(
       summary.failureOwnership.some((f: { message: string }) => f.message === MISSING_GATE_REASON),
     ).toBe(true);
+  });
+
+  it("requires every gate artifact uploaded by the release-gate workflows", () => {
+    // Governance is PR-scoped by design: a recorded failure blocks, but it is
+    // intentionally not part of the required set.
+    const prScoped = new Set(["governance"]);
+    const uploaded = new Set<string>();
+    for (const file of [".github/workflows/ci.yml", ".github/workflows/beta-live-testnet.yml"]) {
+      const text = readFileSync(join(process.cwd(), file), "utf-8");
+      for (const line of text.split("\n")) {
+        const match = line.match(/^\s*(?:path:\s*'?)?gate-result-([a-z0-9-]+)\.json'?,?\s*$/);
+        if (match) uploaded.add(match[1]);
+      }
+    }
+    const required = new Set<string>(REQUIRED_GATES);
+    const missing = [...uploaded].filter((id) => !required.has(id) && !prScoped.has(id));
+    expect(missing).toEqual([]);
+  });
+
+  it("keeps the ci.yml summary needs list in sync with the gate-uploading jobs", () => {
+    const text = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf-8");
+    const jobs = new Map<string, string[]>();
+    let current: string | null = null;
+    let inJobs = false;
+    for (const line of text.split("\n")) {
+      if (/^jobs:\s*$/.test(line)) {
+        inJobs = true;
+        continue;
+      }
+      if (!inJobs) continue;
+      if (/^\S/.test(line)) break;
+      const header = line.match(/^  ([A-Za-z][A-Za-z0-9_-]*):\s*$/);
+      if (header) {
+        current = header[1];
+        jobs.set(current, []);
+        continue;
+      }
+      if (current) jobs.get(current)!.push(line);
+    }
+
+    const summaryBody = jobs.get("release-gate-summary");
+    expect(summaryBody).toBeDefined();
+    const needsAt = summaryBody!.findIndex((line) => line.trim() === "needs:");
+    expect(needsAt).toBeGreaterThanOrEqual(0);
+    const needs = new Set<string>();
+    for (let i = needsAt + 1; i < summaryBody!.length; i++) {
+      const match = summaryBody![i].match(/^\s*- ([a-z0-9-]+)\s*$/);
+      if (!match) break;
+      needs.add(match[1]);
+    }
+
+    const producers = [...jobs.entries()]
+      .filter(
+        ([job, body]) =>
+          job !== "release-gate-summary" && body.some((line) => /^\s+name: gate-/.test(line)),
+      )
+      .map(([job]) => job);
+    expect(producers.length).toBeGreaterThanOrEqual(14);
+    for (const job of producers) expect([...needs]).toContain(job);
+  });
+
+  it("does not fail the verdict when operator-triggered gates are absent", () => {
+    const loaded = passingRequiredGates().filter((g) => !OPERATOR_GATES.includes(g.gateId));
+    const summary = buildReleaseSummary({
+      loadedGates: loaded,
+      commit: "cafebabe",
+      toolVersions: {},
+      artifactHashes: null,
+    });
+    expect(summary.verdict).toBe("pass");
+    expect(summary.releasable).toBe(false);
+    const live = summary.gates.find((g: { gateId: string }) => g.gateId === "beta-soroban-live");
+    expect(live?.status).toBe("skipped");
+    expect(live?.message).toBe(MISSING_OPERATOR_GATE_REASON);
+    expect(summary.missingRequiredGates).toEqual([...OPERATOR_GATES]);
+  });
+
+  it("blocks when an operator-triggered gate result is recorded as failed", () => {
+    const loaded = passingRequiredGates().filter((g) => g.gateId !== "beta-soroban-live");
+    loaded.push({
+      gateId: "beta-soroban-live",
+      name: "Soroban Live Integration",
+      owner: "platform/contracts",
+      dependency: "BETA-086",
+      status: "fail",
+    });
+    const summary = buildReleaseSummary({
+      loadedGates: loaded,
+      commit: "cafebabe",
+      toolVersions: {},
+      artifactHashes: null,
+    });
+    expect(summary.verdict).toBe("fail");
+    expect(summary.failureOwnership.map((f: { gateId: string }) => f.gateId)).toContain(
+      "beta-soroban-live",
+    );
   });
 });
