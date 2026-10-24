@@ -98,12 +98,11 @@ published, reproducible build hash. The runbook is queryable
 
 ## 7. Reference implementation
 
-The normative Soroban `#[contract]` binding follows the flow above and lives in
-`contracts/soroban/upgrade/`. To keep the governance/migration _logic_ verifiable
-without the Wasm toolchain, the same state machine is provided as a pure,
-dependency-free reference module: `src/services/contracts/upgradeGovernance.ts`,
-exercised by `tests/unit/protocol/upgrade-governance.test.ts`. Both implement the
-identical idempotency, timelock, freeze, and rollback semantics.
+The governance/migration _logic_ is implemented as a pure, dependency-free
+reference module: `src/services/contracts/upgradeGovernance.ts`, exercised by
+`tests/unit/protocol/upgrade-governance.test.ts`. It is the normative
+implementation of the idempotency, timelock, freeze, and rollback semantics
+described above.
 
 ## 8. Acceptance criteria mapping
 

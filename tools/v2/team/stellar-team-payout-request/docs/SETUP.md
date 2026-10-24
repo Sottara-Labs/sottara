@@ -236,7 +236,7 @@ const estimatedFee = (baseFee.base_fee * operationCount) / 1e7; // stroops to XL
 
 ## Known Issues and Limitations
 
-See [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md) for:
+See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) for:
 
 - Current limitations
 - Workarounds
@@ -256,7 +256,7 @@ See [KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md) for:
 - Use real Stellar testnet (with fixture accounts)
 - Slower, more comprehensive
 
-See [tests/TEST_PLAN.md](./tests/TEST_PLAN.md) for detailed testing documentation.
+See [tests/TEST_PLAN.md](../tests/TEST_PLAN.md) for detailed testing documentation.
 
 ### Running Tests
 
@@ -273,7 +273,7 @@ bun test --coverage tools/v2/team/stellar-team-payout-request
 
 ## API Documentation
 
-See [docs/API.md](./docs/API.md) for:
+See [docs/API.md](./API.md) for:
 
 - Component prop interfaces
 - Service method signatures
@@ -350,7 +350,7 @@ When integration is requested:
 ## Next Steps
 
 1. Set up environment with `.env.local`
-2. Review [TEST_PLAN.md](./tests/TEST_PLAN.md)
-3. Check [API.md](./docs/API.md) for available functions
+2. Review [TEST_PLAN.md](../tests/TEST_PLAN.md)
+3. Check [API.md](./API.md) for available functions
 4. Run tests to verify setup: `bun test`
 5. Start development or review existing code

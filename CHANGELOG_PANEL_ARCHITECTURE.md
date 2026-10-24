@@ -519,6 +519,6 @@ const isUnread = entryVersion > seenVersion; // String comparison works for semv
 ## Related Documentation
 
 - [Motion System Guide](MOTION_SYSTEM_GUIDE.md) - Animation standards
-- [Design System](src/components/ui/README.md) - UI components
+- [Design System](src/features/design-system/README.md) - UI components
 - [Accessibility Guidelines](docs/security/metadata-policy.md) - a11y standards
 - [Release Gates](docs/deployment/RELEASE_GATES.md) - Deployment criteria

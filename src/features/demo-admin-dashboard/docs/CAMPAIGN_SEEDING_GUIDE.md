@@ -4,7 +4,7 @@ This guide explains how contributors should add deterministic campaign seed data
 
 ## Scope
 
-- Keep all campaign seeding work under [src/features/demo-admin-dashboard](src/features/demo-admin-dashboard).
+- Keep all campaign seeding work under [src/features/demo-admin-dashboard](../).
 - Use fake recipients only (`*.stealth.demo`, `example.com`, or `example.org`).
 - Avoid any production mail flow wiring or live integrations in this issue.
 

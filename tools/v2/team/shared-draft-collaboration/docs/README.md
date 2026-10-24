@@ -41,7 +41,7 @@ shared-draft-collaboration/
 - ✅ Focus indicators visible
 - ✅ Color contrast meets standards
 - ✅ Active state uses visual + text indicators
-- ✅ See [ACCESSIBILITY.md](./docs/ACCESSIBILITY.md) for details
+- ✅ See [ACCESSIBILITY.md](./ACCESSIBILITY.md) for details
 
 ### Component Design
 
@@ -149,7 +149,7 @@ useEffect(() => {
 
 ## Accessibility Testing
 
-For detailed accessibility testing instructions, see [ACCESSIBILITY.md](./docs/ACCESSIBILITY.md).
+For detailed accessibility testing instructions, see [ACCESSIBILITY.md](./ACCESSIBILITY.md).
 
 **Quick test:**
 
@@ -203,7 +203,7 @@ These features can be added without modifying component structure.
 
 ## Related Documentation
 
-- [Accessibility Guidelines](./docs/ACCESSIBILITY.md)
+- [Accessibility Guidelines](./ACCESSIBILITY.md)
 - Main tools README: `tools/v2/team/README.md`
 - Similar tool: `tools/v2/team/suspicious-sender-watchlist/` for component patterns
 
