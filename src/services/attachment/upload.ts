@@ -124,6 +124,7 @@ export interface UploadFileInput {
   signal?: AbortSignal;
   onProgress?: (progress: UploadProgress) => void;
   onStatusChange?: (status: UploadStatus) => void;
+  onSession?: (sessionId: string) => void;
   baseUrl?: string;
 }
 
@@ -142,8 +143,13 @@ export async function uploadAttachment(input: UploadFileInput): Promise<UploadFi
     signal,
     onProgress,
     onStatusChange,
+    onSession,
     baseUrl = "/api/v1/attachments",
   } = input;
+
+  if (signal?.aborted) {
+    throw new AttachmentUploadError("cancelled", "Upload was cancelled");
+  }
 
   onStatusChange?.("encrypting");
 
@@ -176,6 +182,11 @@ export async function uploadAttachment(input: UploadFileInput): Promise<UploadFi
 
   const initiateData = await initiateResponse.json();
   const session: UploadSession = initiateData.data;
+  onSession?.(session.sessionId);
+
+  if (signal?.aborted) {
+    throw new AttachmentUploadError("cancelled", "Upload was cancelled");
+  }
 
   const alreadyUploaded = new Set(session.attachments[0]?.uploadedChunks ?? []);
 

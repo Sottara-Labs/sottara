@@ -10,6 +10,7 @@ import { useState, useCallback, useRef } from "react";
 import {
   uploadAttachment,
   abortUpload,
+  AttachmentUploadError,
   type UploadProgress,
   type UploadStatus,
   type UploadFileResult,
@@ -47,6 +48,7 @@ export function useAttachmentUpload(
     if (sessionIdRef.current) {
       abortUpload(sessionIdRef.current, options.baseUrl).catch(() => undefined);
     }
+    setError(null);
     setStatus("cancelled");
   }, [options.baseUrl]);
 
@@ -73,14 +75,29 @@ export function useAttachmentUpload(
           signal: controller.signal,
           baseUrl: options.baseUrl,
           onProgress: setProgress,
-          onStatusChange: setStatus,
+          onStatusChange: (nextStatus) => {
+            if (!controller.signal.aborted) {
+              setStatus(nextStatus);
+            }
+          },
+          onSession: (sessionId) => {
+            sessionIdRef.current = sessionId;
+            if (controller.signal.aborted) {
+              abortUpload(sessionId, options.baseUrl).catch(() => undefined);
+            }
+          },
         });
 
         sessionIdRef.current = uploadResult.sessionId;
         setResult(uploadResult);
         return uploadResult;
       } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") {
+        if (
+          controller.signal.aborted ||
+          (err instanceof AttachmentUploadError && err.code === "cancelled") ||
+          (err instanceof Error && err.name === "AbortError")
+        ) {
+          setError(null);
           setStatus("cancelled");
           throw err;
         }
