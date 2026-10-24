@@ -25,16 +25,22 @@ export function useNotificationCenter({
 }) {
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const seen = useRef(new Set<string>());
+  const notificationsRef = useRef<InAppNotification[]>([]);
 
   useEffect(() => {
     seen.current = new Set();
-    if (!actor) return setNotifications([]);
+    if (!actor) {
+      notificationsRef.current = [];
+      return setNotifications([]);
+    }
     try {
       const stored = JSON.parse(localStorage.getItem(keyFor(actor)) ?? "[]") as InAppNotification[];
+      notificationsRef.current = stored;
       setNotifications(stored);
       stored.forEach((item) => seen.current.add(item.id));
     } catch {
       localStorage.removeItem(keyFor(actor));
+      notificationsRef.current = [];
       setNotifications([]);
     }
   }, [actor]);
@@ -59,39 +65,42 @@ export function useNotificationCenter({
     );
     if (!additions.length) return;
     additions.forEach(([, id]) => seen.current.add(id));
-    setNotifications((current) => {
-      const next = additions
-        .map(([category, id, createdAt]) => createNotification(id, category, createdAt))
-        .concat(current)
-        .slice(0, 100);
-      localStorage.setItem(keyFor(actor), JSON.stringify(next));
-      if (
-        browserEnabled &&
-        !isWithinQuietHours(new Date(), preferences.quietHours) &&
-        typeof Notification !== "undefined" &&
-        Notification.permission === "granted"
-      ) {
-        additions.forEach(([category, id]) => {
-          const copy = safeBrowserCopy[category];
-          new Notification(copy.title, { body: copy.body, tag: id });
-        });
-      }
-      return next;
-    });
+    // Compute the next list outside the updater: updaters must stay pure, and
+    // StrictMode double-invokes them, which would duplicate persistence and
+    // desktop notifications.
+    const next = additions
+      .map(([category, id, createdAt]) => createNotification(id, category, createdAt))
+      .concat(notificationsRef.current)
+      .slice(0, 100);
+    notificationsRef.current = next;
+    setNotifications(next);
+    localStorage.setItem(keyFor(actor), JSON.stringify(next));
+    if (
+      browserEnabled &&
+      !isWithinQuietHours(new Date(), preferences.quietHours) &&
+      typeof Notification !== "undefined" &&
+      Notification.permission === "granted"
+    ) {
+      additions.forEach(([category, id]) => {
+        const copy = safeBrowserCopy[category];
+        new Notification(copy.title, { body: copy.body, tag: id });
+      });
+    }
   }, [actor, browserEnabled, mail, preferences, requests]);
 
-  const persist = (next: InAppNotification[]) => {
+  const applyNotifications = (next: InAppNotification[]) => {
+    notificationsRef.current = next;
     if (actor) localStorage.setItem(keyFor(actor), JSON.stringify(next));
-    return next;
+    setNotifications(next);
   };
   return {
     notifications,
     markRead: (id: string) =>
-      setNotifications((current) =>
-        persist(current.map((item) => (item.id === id ? { ...item, read: true } : item))),
+      applyNotifications(
+        notificationsRef.current.map((item) => (item.id === id ? { ...item, read: true } : item)),
       ),
     markAllRead: () =>
-      setNotifications((current) => persist(current.map((item) => ({ ...item, read: true })))),
+      applyNotifications(notificationsRef.current.map((item) => ({ ...item, read: true }))),
   };
 }
 

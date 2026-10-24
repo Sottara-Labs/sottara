@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { StrictMode } from "react";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -111,5 +112,47 @@ describe("useNotificationCenter", () => {
     rerender({ mail: [makeMail("m1"), makeMail("m2")] });
 
     expect(result.current.notifications.map((item) => item.id)).toEqual(["mail:m2"]);
+  });
+
+  it("fires exactly one desktop notification per arrival under StrictMode", () => {
+    const storage = makeStorage();
+    const writes = new Map<string, number>();
+    const rawSetItem = storage.setItem.bind(storage);
+    storage.setItem = (key: string, value: string) => {
+      writes.set(key, (writes.get(key) ?? 0) + 1);
+      rawSetItem(key, value);
+    };
+    vi.stubGlobal("localStorage", storage);
+    const fired: Array<{ title: string; tag?: string }> = [];
+    class FakeNotification {
+      static permission: NotificationPermission = "granted";
+      constructor(title: string, options?: NotificationOptions) {
+        fired.push({ title, tag: options?.tag });
+      }
+    }
+    vi.stubGlobal("Notification", FakeNotification);
+
+    const { rerender } = renderHook(
+      ({ mail }) =>
+        useNotificationCenter({
+          actor: ACTOR,
+          mail,
+          requests: [],
+          preferences: defaultPreferences.notifications,
+          browserEnabled: true,
+        }),
+      {
+        initialProps: { mail: [makeMail("m1")] },
+        wrapper: ({ children }) => <StrictMode>{children}</StrictMode>,
+      },
+    );
+
+    expect(fired).toHaveLength(0);
+
+    rerender({ mail: [makeMail("m1"), makeMail("m2")] });
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0]).toEqual({ title: "New encrypted mail", tag: "mail:m2" });
+    expect(writes.get(STORAGE_KEY)).toBe(1);
   });
 });
