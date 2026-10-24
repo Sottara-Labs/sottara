@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import type { Email, MailFolder } from "@/components/mail/data";
 import { buildPaletteModel, selectableRows, type PaletteRow, type PaletteSection } from "./search";
 import type { CommandContext, CommandId, ResolvedCommand } from "./types";
@@ -41,8 +42,26 @@ export function CommandPalette({
   const [activeIndex, setActiveIndex] = useState(0);
   const [confirming, setConfirming] = useState<ResolvedCommand | null>(null);
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const confirmingRef = useRef(confirming);
+  confirmingRef.current = confirming;
+
+  const close = useCallback(() => {
+    if (confirmingRef.current) {
+      setConfirming(null);
+    } else {
+      closeRef.current();
+    }
+  }, []);
+
+  const dialogRef = useFocusTrap(open, close);
+
   const sections = useMemo(() => buildPaletteModel(context, q, emails), [context, q, emails]);
   const selectable = useMemo(() => selectableRows(sections), [sections]);
+  const activeRow = selectable[activeIndex];
+  const activeDescendantId = activeRow ? `command-palette-option-${activeRow.key}` : undefined;
+
   const selectableIndexByKey = useMemo(() => {
     const map = new Map<string, number>();
     selectable.forEach((row, index) => map.set(row.key, index));
@@ -146,6 +165,8 @@ export function CommandPalette({
             className="fixed inset-0 z-40 bg-overlay/40 backdrop-blur-sm"
           />
           <motion.div
+            ref={dialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
@@ -154,7 +175,7 @@ export function CommandPalette({
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ type: "spring", stiffness: 300, damping: 28 }}
             onKeyDown={handleKeyDown}
-            className="glass-strong fixed left-1/2 top-24 z-50 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl"
+            className="glass-strong fixed left-1/2 top-24 z-50 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-2xl outline-none"
           >
             {confirming ? (
               <ConfirmPanel
@@ -170,7 +191,12 @@ export function CommandPalette({
                 <div className="flex items-center gap-3 border-b border-surface-tint/5 px-4 py-3">
                   <Search className="h-4 w-4 text-muted-foreground" />
                   <input
-                    autoFocus
+                    role="combobox"
+                    aria-label="Command palette search"
+                    aria-autocomplete="list"
+                    aria-expanded={open && !confirming}
+                    aria-controls="command-palette-listbox"
+                    aria-activedescendant={activeDescendantId}
                     value={q}
                     onChange={(event) => setQ(event.target.value)}
                     placeholder="Run a command or search folders, senders, proofs…"
@@ -182,7 +208,12 @@ export function CommandPalette({
                     </span>
                   )}
                 </div>
-                <ul className="max-h-[60vh] overflow-y-auto p-2">
+                <ul
+                  id="command-palette-listbox"
+                  role="listbox"
+                  aria-label="Suggestions"
+                  className="max-h-[60vh] overflow-y-auto p-2"
+                >
                   {sections.length === 0 && (
                     <li className="px-3 py-6 text-center text-xs text-muted-foreground">
                       No matches for “{q}”.
@@ -228,7 +259,10 @@ const PaletteSectionView = memo(function PaletteSectionView({
 }) {
   return (
     <>
-      <li className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+      <li
+        role="presentation"
+        className="px-3 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground"
+      >
         {section.title}
       </li>
       {section.rows.map((row) => {
@@ -264,7 +298,9 @@ const RowView = memo(function RowView({
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    if (active) ref.current?.scrollIntoView({ block: "nearest" });
+    if (active && typeof ref.current?.scrollIntoView === "function") {
+      ref.current.scrollIntoView({ block: "nearest" });
+    }
   }, [active]);
 
   const meta = rowMeta(row);
@@ -285,9 +321,12 @@ const RowView = memo(function RowView({
   };
 
   return (
-    <li>
+    <li role="presentation">
       <button
         ref={ref}
+        id={`command-palette-option-${row.key}`}
+        role="option"
+        aria-selected={active}
         type="button"
         disabled={disabled}
         onMouseEnter={handleMouseEnter}
