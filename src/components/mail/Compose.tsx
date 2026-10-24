@@ -318,15 +318,10 @@ export function Compose({
           close();
         }
       }
-      // Tab to insert AI suggestion
-      if (e.key === "Tab" && open && document.activeElement === textareaRef.current) {
-        e.preventDefault();
-        insertAtCursor(aiSuggestion);
-      }
     };
     if (open) globalThis.addEventListener("keydown", handler);
     return () => globalThis.removeEventListener("keydown", handler);
-  }, [open, emojiOpen, insertAtCursor, close]);
+  }, [open, emojiOpen, close]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: "file" | "image") => {
     const files = e.target.files;
@@ -640,7 +635,7 @@ export function Compose({
                   onClick={() => insertAtCursor(aiSuggestion)}
                   className="shrink-0 rounded-md border border-surface-tint/10 bg-surface-tint/6 px-2 py-0.5 text-[10px] text-foreground/90 transition hover:bg-surface-tint/10"
                 >
-                  Tab to insert
+                  Insert suggestion
                 </button>
               </motion.div>
 
