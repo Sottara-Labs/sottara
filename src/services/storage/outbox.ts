@@ -5,16 +5,20 @@
  * in-flight send survives a page refresh. Only the encrypted envelope and
  * delivery metadata are persisted; plaintext is never written here.
  */
+import { z } from "zod";
 import type { EnvelopePayload } from "@/services/crypto/envelope";
 
-export type OutboxStatus =
-  | "queued"
-  | "encrypting"
-  | "awaiting_signature"
-  | "reserving_postage"
-  | "submitting"
-  | "delivered"
-  | "failed";
+export const OUTBOX_STATUSES = [
+  "queued",
+  "encrypting",
+  "awaiting_signature",
+  "reserving_postage",
+  "submitting",
+  "delivered",
+  "failed",
+] as const;
+
+export type OutboxStatus = (typeof OUTBOX_STATUSES)[number];
 
 export interface OutboxStageSnapshot {
   id: string;
@@ -44,31 +48,99 @@ export interface OutboxEntry {
   postageAmount?: string;
 }
 
+const OutboxStageSnapshotSchema = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  status: z.enum(["pending", "active", "done", "error"]),
+  detail: z.string().optional(),
+});
+
+export const OutboxEntrySchema = z
+  .object({
+    id: z.string().min(1),
+    createdAt: z.string().min(1),
+    updatedAt: z.string().min(1).optional(),
+    subject: z.string().default(""),
+    recipients: z.array(z.string()).default([]),
+    status: z.enum(OUTBOX_STATUSES).default("queued"),
+    attempts: z.number().int().nonnegative().default(0),
+    errorCode: z.string().optional(),
+    errorMessage: z.string().optional(),
+    envelope: z.custom<EnvelopePayload>().optional(),
+    ciphertext: z.string().optional(),
+    idempotencyKey: z.string().optional(),
+    supportId: z.string().optional(),
+    sender: z.string().optional(),
+    stages: z.array(OutboxStageSnapshotSchema).optional(),
+    canRetry: z.boolean().optional(),
+    isCommitted: z.boolean().optional(),
+    postageAmount: z.string().optional(),
+  })
+  .transform(
+    (entry): OutboxEntry => ({
+      ...entry,
+      updatedAt: entry.updatedAt ?? entry.createdAt,
+    }),
+  );
+
 const STORAGE_KEY = "stealth.outbox.v1";
 
 function isBrowser(): boolean {
-  return typeof window !== "undefined" && !!window.localStorage;
+  try {
+    return typeof window !== "undefined" && !!window.localStorage;
+  } catch {
+    return false;
+  }
 }
 
-function readAll(): OutboxEntry[] {
+function readRawList(): unknown[] {
   if (!isBrowser()) return [];
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as OutboxEntry[]) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function writeAll(entries: OutboxEntry[]): void {
+function readAll(): OutboxEntry[] {
+  const rawItems = readRawList();
+  const validEntries: OutboxEntry[] = [];
+  for (const item of rawItems) {
+    const parsed = OutboxEntrySchema.safeParse(item);
+    if (parsed.success) {
+      validEntries.push(parsed.data);
+    }
+  }
+  return validEntries;
+}
+
+function writeAll(entries: OutboxEntry[], preservedInvalid: unknown[] = []): void {
   if (!isBrowser()) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify([...entries, ...preservedInvalid]),
+    );
   } catch {
     // Ignore quota / serialization failures; persistence is best-effort.
   }
+}
+
+function splitStoredEntries(): { valid: OutboxEntry[]; invalid: unknown[] } {
+  const valid: OutboxEntry[] = [];
+  const invalid: unknown[] = [];
+  for (const item of readRawList()) {
+    const parsed = OutboxEntrySchema.safeParse(item);
+    if (parsed.success) {
+      valid.push(parsed.data);
+    } else {
+      invalid.push(item);
+    }
+  }
+  return { valid, invalid };
 }
 
 export function listOutbox(): OutboxEntry[] {
@@ -80,15 +152,18 @@ export function getEntry(id: string): OutboxEntry | undefined {
 }
 
 export function upsertEntry(entry: OutboxEntry): OutboxEntry {
-  const entries = readAll();
-  const next = { ...entry, updatedAt: new Date().toISOString() };
+  const { valid: entries, invalid } = splitStoredEntries();
+  const next = OutboxEntrySchema.parse({
+    ...entry,
+    updatedAt: new Date().toISOString(),
+  });
   const index = entries.findIndex((item) => item.id === entry.id);
   if (index >= 0) {
     entries[index] = next;
   } else {
     entries.push(next);
   }
-  writeAll(entries);
+  writeAll(entries, invalid);
   return next;
 }
 
@@ -96,21 +171,25 @@ export function patchEntry(
   id: string,
   patch: Partial<Omit<OutboxEntry, "id">>,
 ): OutboxEntry | undefined {
-  const entries = readAll();
+  const { valid: entries, invalid } = splitStoredEntries();
   const index = entries.findIndex((item) => item.id === id);
   if (index < 0) return undefined;
-  const next = {
+  const next = OutboxEntrySchema.parse({
     ...entries[index],
     ...patch,
     updatedAt: new Date().toISOString(),
-  };
+  });
   entries[index] = next;
-  writeAll(entries);
+  writeAll(entries, invalid);
   return next;
 }
 
 export function removeEntry(id: string): void {
-  writeAll(readAll().filter((entry) => entry.id !== id));
+  const { valid: entries, invalid } = splitStoredEntries();
+  writeAll(
+    entries.filter((entry) => entry.id !== id),
+    invalid,
+  );
 }
 
 export function createEntry(input: {
