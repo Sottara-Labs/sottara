@@ -86,10 +86,13 @@ async function unpackData<D>(response: Response, schema: z.ZodType<D>): Promise<
 }
 
 /** Reads the durable server-backed draft for the session account. */
-export async function fetchOnboardingDraft(): Promise<OnboardingDraftProjection | null> {
+export async function fetchOnboardingDraft(
+  signal?: AbortSignal,
+): Promise<OnboardingDraftProjection | null> {
   const response = await fetch(`${API_BASE}/draft`, {
     method: "GET",
     headers: { Accept: "application/json" },
+    signal,
   });
   const payload = await unpackData(
     response,

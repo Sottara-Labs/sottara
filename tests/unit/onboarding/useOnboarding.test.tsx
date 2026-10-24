@@ -235,4 +235,74 @@ describe("useOnboarding (profile-first, wallet-free)", () => {
     expect(step).toBe("stealth-address");
     expect(draft).not.toHaveProperty("walletAddress");
   });
+
+  it("aborts superseded progress restore on retry and discards stale response", async () => {
+    let resolveFirst: (val: any) => void;
+    const firstPromise = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    const secondDraft = {
+      status: "in_progress",
+      step: "sender-policy",
+      displayName: "Newer Progress",
+      recoveryAcknowledged: true,
+      unknownSenderRule: "verified",
+      minimumPostage: "0.05",
+      receiptOnDelivery: true,
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      completedAt: null,
+    };
+
+    vi.mocked(fetchOnboardingDraft)
+      .mockImplementationOnce(() => firstPromise as any)
+      .mockResolvedValueOnce(secondDraft as any);
+
+    const { result } = renderHook(() => useOnboarding({}));
+
+    expect(result.current.isRestoring).toBe(true);
+
+    // Trigger retry before first promise resolves
+    act(() => {
+      result.current.retryRestore();
+    });
+
+    await waitFor(() => expect(result.current.isRestoring).toBe(false));
+    expect(result.current.step).toBe("sender-policy");
+    expect(result.current.draft.displayName).toBe("Newer Progress");
+
+    // Now resolve the older, slower first promise with older progress
+    await act(async () => {
+      resolveFirst!({
+        status: "in_progress",
+        step: "profile",
+        displayName: "Stale Older Progress",
+        recoveryAcknowledged: false,
+        unknownSenderRule: "request",
+        minimumPostage: "0",
+        receiptOnDelivery: false,
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        completedAt: null,
+      });
+    });
+
+    // Stale response must be discarded and NOT overwrite newer progress
+    expect(result.current.step).toBe("sender-policy");
+    expect(result.current.draft.displayName).toBe("Newer Progress");
+  });
+
+  it("aborts in-flight restore on unmount", async () => {
+    let capturedSignal: AbortSignal | undefined;
+    vi.mocked(fetchOnboardingDraft).mockImplementationOnce((signal) => {
+      capturedSignal = signal;
+      return new Promise(() => {}); // never resolves
+    });
+
+    const { unmount } = renderHook(() => useOnboarding({}));
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal?.aborted).toBe(false);
+
+    unmount();
+    expect(capturedSignal?.aborted).toBe(true);
+  });
 });

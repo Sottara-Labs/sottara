@@ -71,6 +71,8 @@ export function useOnboarding(options: {
   const updateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKeyRef = useRef<string | null>(null);
   const lastSubmitPayloadRef = useRef<string | null>(null);
+  const restoreAbortControllerRef = useRef<AbortController | null>(null);
+  const restoreSequenceRef = useRef<number>(0);
 
   const applyProgress = useCallback((next: { step: OnboardingStep; draft: OnboardingDraft }) => {
     progressRef.current = next;
@@ -78,10 +80,20 @@ export function useOnboarding(options: {
   }, []);
 
   const restore = useCallback(async () => {
+    if (restoreAbortControllerRef.current) {
+      restoreAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    restoreAbortControllerRef.current = controller;
+    const currentSeq = ++restoreSequenceRef.current;
+
     setIsRestoring(true);
     setRestoreError(null);
     try {
-      const record = await fetchOnboardingDraft();
+      const record = await fetchOnboardingDraft(controller.signal);
+      if (controller.signal.aborted || currentSeq !== restoreSequenceRef.current) {
+        return;
+      }
       if (record) {
         if (record.status === "completed") {
           setCompleted({
@@ -95,16 +107,26 @@ export function useOnboarding(options: {
         }
       }
     } catch {
+      if (controller.signal.aborted || currentSeq !== restoreSequenceRef.current) {
+        return;
+      }
       // A failed restore must not lose the flow: fall back to defaults and
       // let the user retry from the first unsaved step.
       setRestoreError("Could not load your saved progress. Starting fresh.");
     } finally {
-      setIsRestoring(false);
+      if (!controller.signal.aborted && currentSeq === restoreSequenceRef.current) {
+        setIsRestoring(false);
+      }
     }
   }, [applyProgress]);
 
   useEffect(() => {
     void restore();
+    return () => {
+      if (restoreAbortControllerRef.current) {
+        restoreAbortControllerRef.current.abort();
+      }
+    };
   }, [restore]);
 
   // Single-flight writer with trailing flush: every trigger either writes now
