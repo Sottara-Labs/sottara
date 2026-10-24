@@ -72,7 +72,8 @@ export type ImportSessionRecord = {
 export function saveSession(session: ImportSession): void {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    const sessions: ImportSessionRecord[] = raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    const sessions: ImportSessionRecord[] = Array.isArray(parsed) ? parsed : [];
 
     sessions.unshift({
       id: session.id,
@@ -100,8 +101,23 @@ export function saveSession(session: ImportSession): void {
 export function loadSessions(): ImportSessionRecord[] {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      try {
+        localStorage.removeItem(SESSION_KEY);
+      } catch {
+        // ignore
+      }
+      return [];
+    }
+    return parsed;
   } catch {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      // ignore
+    }
     return [];
   }
 }
@@ -112,8 +128,12 @@ export function loadSessions(): ImportSessionRecord[] {
  */
 export function cleanExpiredSessions(): number {
   const sessions = loadSessions();
+  if (!Array.isArray(sessions)) {
+    return 0;
+  }
   const now = Date.now();
   const remaining = sessions.filter((s) => {
+    if (!s || typeof s !== "object") return false;
     const ms = retentionMs(s.rawDataRetention);
     if (ms === Infinity) return true;
     if (ms === 0) return false;

@@ -163,6 +163,18 @@ describe("saveSession / loadSessions / clearSessions", () => {
     expect(loadSessions()).toEqual([]);
   });
 
+  it("handles non-array object ({}) gracefully and resets storage", () => {
+    localStorage.setItem("stealth-import-sessions", JSON.stringify({ malformed: true }));
+    expect(loadSessions()).toEqual([]);
+    expect(localStorage.getItem("stealth-import-sessions")).toBeNull();
+  });
+
+  it("handles null payload gracefully and resets storage", () => {
+    localStorage.setItem("stealth-import-sessions", "null");
+    expect(loadSessions()).toEqual([]);
+    expect(localStorage.getItem("stealth-import-sessions")).toBeNull();
+  });
+
   it("handles localStorage quota errors gracefully", () => {
     // Simulate storage full
     localStorage.setItem = vi.fn().mockImplementation(() => {
@@ -213,6 +225,30 @@ describe("cleanExpiredSessions", () => {
     localStorage.setItem("stealth-import-sessions", "not-json");
     const removed = cleanExpiredSessions();
     expect(removed).toBe(0);
+  });
+
+  it("does not throw and returns 0 when stored payload is an object ({})", () => {
+    localStorage.setItem("stealth-import-sessions", JSON.stringify({}));
+    expect(() => {
+      const removed = cleanExpiredSessions();
+      expect(removed).toBe(0);
+    }).not.toThrow();
+  });
+
+  it("does not throw and returns 0 when stored payload is null", () => {
+    localStorage.setItem("stealth-import-sessions", "null");
+    expect(() => {
+      const removed = cleanExpiredSessions();
+      expect(removed).toBe(0);
+    }).not.toThrow();
+  });
+
+  it("does not throw and returns 0 when stored payload is truncated JSON", () => {
+    localStorage.setItem("stealth-import-sessions", '[{"id": "session-1", "source": "csv",');
+    expect(() => {
+      const removed = cleanExpiredSessions();
+      expect(removed).toBe(0);
+    }).not.toThrow();
   });
 
   it("handles localStorage write errors gracefully", () => {
