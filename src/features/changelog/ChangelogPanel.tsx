@@ -152,11 +152,11 @@ export function ChangelogPanel() {
 
   const grouped = useMemo(() => groupEntriesByRelease(entries), [entries]);
 
-  // isEntryUnread only depends on the (stable, mount-time) initial seen
-  // version, so each entry's unread state is computed once here instead of
-  // being recomputed by calling the helper again for every entry on every
-  // render (previously called both per-group, via `.some`, and per-entry
-  // inside the render loop below).
+  // isEntryUnread changes identity whenever the seen version changes, so this
+  // map recomputes when `markAllSeen()` lands and unread badges clear without
+  // a remount. Computing each entry's state once here avoids calling the
+  // helper again for every entry on every render (previously called both
+  // per-group, via `.some`, and per-entry inside the render loop below).
   const unreadByVersion = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const entry of entries) {

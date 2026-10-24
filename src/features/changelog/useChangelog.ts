@@ -9,7 +9,6 @@ import {
 
 export function useChangelog() {
   const [seenVersion, setSeenVersionState] = useState<string | null>(getSeenVersion);
-  const [initialSeenVersion] = useState<string | null>(seenVersion);
 
   const hasUnread = hasUnreadEntries(LATEST_VERSION, seenVersion);
 
@@ -20,9 +19,9 @@ export function useChangelog() {
 
   const isEntryUnread = useCallback(
     (entryVersion: string) => {
-      return isEntryUnreadHelper(entryVersion, initialSeenVersion);
+      return isEntryUnreadHelper(entryVersion, seenVersion);
     },
-    [initialSeenVersion],
+    [seenVersion],
   );
 
   return { entries: CHANGELOG_ENTRIES, hasUnread, markAllSeen, isEntryUnread };
