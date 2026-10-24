@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
 import {
+  compareVersions,
   isEntryUnread,
   hasUnreadEntries,
   groupEntriesByRelease,
@@ -99,6 +100,40 @@ describe("CHANGELOG_ENTRIES data integrity", () => {
 });
 
 // ---------------------------------------------------------------------------
+// compareVersions (Issue #393)
+// ---------------------------------------------------------------------------
+
+describe("compareVersions", () => {
+  it("reports 1.10.0 as newer than 1.9.0 (numeric segment comparison)", () => {
+    expect(compareVersions("1.10.0", "1.9.0")).toBe(1);
+    expect(compareVersions("1.9.0", "1.10.0")).toBe(-1);
+  });
+
+  it("reports identical versions as equal (0)", () => {
+    expect(compareVersions("1.10.0", "1.10.0")).toBe(0);
+    expect(compareVersions("v1.10.0", "1.10.0")).toBe(0);
+  });
+
+  it("handles pre-release suffixes correctly", () => {
+    // A stable release is newer than a pre-release of the same version
+    expect(compareVersions("1.10.0", "1.10.0-beta.1")).toBe(1);
+    expect(compareVersions("1.10.0-beta.1", "1.10.0")).toBe(-1);
+
+    // Pre-release versions comparison
+    expect(compareVersions("1.10.0-beta.2", "1.10.0-beta.1")).toBeGreaterThan(0);
+    expect(compareVersions("1.10.0-rc.1", "1.10.0-beta.2")).toBeGreaterThan(0);
+
+    // A pre-release of a higher major/minor is newer than an older stable release
+    expect(compareVersions("1.10.0-beta.1", "1.9.0")).toBe(1);
+  });
+
+  it("handles different segment counts", () => {
+    expect(compareVersions("1.2", "1.2.0")).toBe(0);
+    expect(compareVersions("1.2.1", "1.2")).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // isEntryUnread
 // ---------------------------------------------------------------------------
 
@@ -110,19 +145,27 @@ describe("isEntryUnread", () => {
 
   it("returns true when entryVersion is newer than seenVersion", () => {
     expect(isEntryUnread("0.4.0", "0.3.2")).toBe(true);
+    expect(isEntryUnread("1.10.0", "1.9.0")).toBe(true);
   });
 
   it("returns false when entryVersion matches seenVersion exactly", () => {
     expect(isEntryUnread("0.3.2", "0.3.2")).toBe(false);
+    expect(isEntryUnread("1.10.0", "1.10.0")).toBe(false);
   });
 
   it("returns false when entryVersion is older than seenVersion", () => {
     expect(isEntryUnread("0.3.0", "0.3.2")).toBe(false);
+    expect(isEntryUnread("1.9.0", "1.10.0")).toBe(false);
   });
 
   it("handles single-digit version strings", () => {
     expect(isEntryUnread("2", "1")).toBe(true);
     expect(isEntryUnread("1", "2")).toBe(false);
+  });
+
+  it("handles pre-release suffixes in entry comparison", () => {
+    expect(isEntryUnread("1.10.0", "1.10.0-beta.1")).toBe(true);
+    expect(isEntryUnread("1.10.0-beta.1", "1.10.0")).toBe(false);
   });
 });
 

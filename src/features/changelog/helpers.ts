@@ -32,24 +32,70 @@ export function setSeenVersion(version: string): void {
 }
 
 /**
+ * Compare two version strings numerically segment by segment, handling
+ * pre-release suffixes explicitly.
+ *
+ * Returns:
+ *  - 1 if v1 > v2 (v1 is newer)
+ *  - -1 if v1 < v2 (v1 is older)
+ *  - 0 if v1 === v2
+ */
+export function compareVersions(v1: string, v2: string): number {
+  if (v1 === v2) return 0;
+
+  // Clean leading 'v'
+  const clean1 = v1.trim().replace(/^v/i, "");
+  const clean2 = v2.trim().replace(/^v/i, "");
+
+  // Split version into core segments and pre-release suffix (e.g. "1.10.0-beta.1" -> "1.10.0", "beta.1")
+  const [core1, ...preParts1] = clean1.split("-");
+  const [core2, ...preParts2] = clean2.split("-");
+
+  const pre1 = preParts1.length > 0 ? preParts1.join("-") : undefined;
+  const pre2 = preParts2.length > 0 ? preParts2.join("-") : undefined;
+
+  const segs1 = core1.split(".").map((s) => parseInt(s, 10));
+  const segs2 = core2.split(".").map((s) => parseInt(s, 10));
+
+  const maxLen = Math.max(segs1.length, segs2.length);
+  for (let i = 0; i < maxLen; i++) {
+    const num1 = Number.isNaN(segs1[i]) || segs1[i] === undefined ? 0 : segs1[i];
+    const num2 = Number.isNaN(segs2[i]) || segs2[i] === undefined ? 0 : segs2[i];
+
+    if (num1 > num2) return 1;
+    if (num1 < num2) return -1;
+  }
+
+  // Core versions are equal. Handle pre-release suffixes:
+  // A version with a pre-release suffix is older than a version without one.
+  if (pre1 === undefined && pre2 !== undefined) return 1;
+  if (pre1 !== undefined && pre2 === undefined) return -1;
+  if (pre1 !== undefined && pre2 !== undefined) {
+    return pre1.localeCompare(pre2, undefined, { numeric: true });
+  }
+
+  return 0;
+}
+
+/**
  * Determine whether a changelog entry should be considered unread
  * given the last version the user acknowledged.
  *
  * When `seenVersion` is `null` (first visit), every entry is unread.
- * Otherwise, an entry is unread when its version string compares
- * greater than the seen version (lexicographic — works for semver
- * with consistent segment counts).
+ * Otherwise, an entry is unread when its version compares numerically
+ * greater than the seen version.
  */
 export function isEntryUnread(entryVersion: string, seenVersion: string | null): boolean {
   if (!seenVersion) return true;
-  return entryVersion > seenVersion;
+  return compareVersions(entryVersion, seenVersion) > 0;
 }
 
 /**
  * Determine whether any entry in the list is newer than the seen version.
  */
 export function hasUnreadEntries(latestVersion: string, seenVersion: string | null): boolean {
-  return seenVersion !== latestVersion;
+  if (!seenVersion) return true;
+  return compareVersions(latestVersion, seenVersion) > 0;
 }
 
 /** Key used to group changelog entries by release. */
