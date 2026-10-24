@@ -294,4 +294,52 @@ describe("R2ObjectStoreAdapter", () => {
     expect(finalKey).toMatch(new RegExp(`^${ENVELOPE_BODY_PREFIX}`));
     expect(finalKey).not.toContain("filename");
   });
+  it("removes staged objects missing expiresAt or failing assertValidMetadata and splits report by expired and invalid", async () => {
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const { bucket, adapter } = await buildAdapter(() => now);
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const commitment = await createObjectCommitment(bytes);
+
+    // 1. Staged object without expiresAt
+    const missingExpiresKey = `${STAGING_PREFIX}missing-expires`;
+    await bucket.put(missingExpiresKey, bytes, {
+      customMetadata: {
+        version: "v1",
+        kind: "envelope-body",
+        messageId: MESSAGE_ID,
+        ownerAddress: OWNER,
+        contentType: "application/octet-stream",
+        contentLength: String(bytes.length),
+        contentCommitment: commitment,
+        status: "staged",
+        createdAt: now.toISOString(),
+      },
+    });
+
+    // 2. Staged object missing contentCommitment (fails assertValidMetadata)
+    const missingCommitmentKey = `${STAGING_PREFIX}missing-commitment`;
+    await bucket.put(missingCommitmentKey, bytes, {
+      customMetadata: {
+        version: "v1",
+        kind: "envelope-body",
+        messageId: MESSAGE_ID,
+        ownerAddress: OWNER,
+        contentType: "application/octet-stream",
+        contentLength: String(bytes.length),
+        status: "staged",
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+      },
+    });
+
+    const removed = await adapter.cleanupExpired(now);
+    expect(removed).toBe(2);
+    expect(adapter.lastCleanupReport).toEqual({
+      removed: 2,
+      expired: 1,
+      invalid: 1,
+    });
+    expect(bucket.peek(missingExpiresKey)).toBeNull();
+    expect(bucket.peek(missingCommitmentKey)).toBeNull();
+  });
 });

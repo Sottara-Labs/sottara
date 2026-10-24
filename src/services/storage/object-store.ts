@@ -334,9 +334,23 @@ export function assertValidMetadata(metadata: ObjectStoreMetadata): void {
   }
 }
 
-/** Returns `true` when a staged object's expiry timestamp is in the past. */
+export interface CleanupSweepBreakdown {
+  removed: number;
+  expired: number;
+  invalid: number;
+}
+
+/**
+ * Returns `true` when a staged object's expiry timestamp is missing,
+ * unparseable, or in the past. Committed objects without `expiresAt` do not expire.
+ */
 export function isExpired(metadata: ObjectStoreMetadata, now: Date): boolean {
-  if (!metadata.expiresAt) return false;
+  if (!metadata.expiresAt) {
+    return metadata.status !== "committed";
+  }
   const expires = Date.parse(metadata.expiresAt);
-  return Number.isFinite(expires) && expires <= now.getTime();
+  if (!Number.isFinite(expires)) {
+    return true;
+  }
+  return expires <= now.getTime();
 }

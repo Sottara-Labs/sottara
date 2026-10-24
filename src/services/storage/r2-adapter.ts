@@ -28,6 +28,7 @@ import {
   type ObjectStoreAdapter,
   type ObjectStoreMetadata,
   type StageObjectInput,
+  type CleanupSweepBreakdown,
   type StoredObject,
 } from "./object-store";
 
@@ -192,9 +193,12 @@ export class R2ObjectStoreAdapter implements ObjectStoreAdapter {
    * uploads and abandoned objects expire safely instead of accumulating in the
    * staging namespace indefinitely.
    */
-  async cleanupExpired(now?: Date): Promise<number> {
+  public lastCleanupReport: CleanupSweepBreakdown = { removed: 0, expired: 0, invalid: 0 };
+
+  async cleanupExpiredWithReport(now?: Date): Promise<CleanupSweepBreakdown> {
     const reference = now ?? this.now();
-    let removed = 0;
+    let expired = 0;
+    let invalid = 0;
     let cursor: string | undefined;
 
     do {
@@ -206,20 +210,32 @@ export class R2ObjectStoreAdapter implements ObjectStoreAdapter {
         let metadata: ObjectStoreMetadata;
         try {
           metadata = deserializeMetadata(object.customMetadata);
+          assertValidMetadata(metadata);
         } catch {
-          // Orphaned object with unreadable metadata is expired garbage; remove it.
+          // Orphaned object with unreadable or invalid metadata is garbage; remove it.
           await this.bucket.delete(object.key);
-          removed += 1;
+          invalid += 1;
           continue;
         }
         if (isExpired(metadata, reference)) {
           await this.bucket.delete(object.key);
-          removed += 1;
+          expired += 1;
         }
       }
       cursor = result.truncated ? result.cursor : undefined;
     } while (cursor);
 
-    return removed;
+    const report: CleanupSweepBreakdown = {
+      removed: expired + invalid,
+      expired,
+      invalid,
+    };
+    this.lastCleanupReport = report;
+    return report;
+  }
+
+  async cleanupExpired(now?: Date): Promise<number> {
+    const report = await this.cleanupExpiredWithReport(now);
+    return report.removed;
   }
 }
