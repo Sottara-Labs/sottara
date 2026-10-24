@@ -37,15 +37,20 @@ const inputClass =
  * Esc cancels. Cancel/backdrop/Esc close with no policy change.
  */
 export function SnoozeDialog({ target, initialState, events, onConfirm, onClose }: Props) {
-  const now = getReferenceNow();
+  const targetEmailId = target?.emailId;
+  const now = useMemo(() => getReferenceNow(), [targetEmailId]);
   const [choice, setChoice] = useState<SnoozeChoice | null>(null);
   const [customDate, setCustomDate] = useState("");
   const [customTime, setCustomTime] = useState("");
 
+  const initialStateChoice = initialState?.choice;
+  const initialStateRemindAt = initialState?.remindAt;
+
   // Seed from an existing reminder when editing; otherwise start blank so no
-  // option is pre-applied.
+  // option is pre-applied. Keyed on stable identifiers so parent re-renders do
+  // not wipe the chosen snooze time mid-interaction.
   useEffect(() => {
-    if (!target) return;
+    if (!targetEmailId) return;
     if (initialState) {
       setChoice(initialState.choice);
       if (initialState.choice === "custom") {
@@ -58,16 +63,16 @@ export function SnoozeDialog({ target, initialState, events, onConfirm, onClose 
       setCustomDate("");
       setCustomTime("");
     }
-  }, [target?.emailId, initialState, target]);
+  }, [targetEmailId, initialStateChoice, initialStateRemindAt]);
 
   useEffect(() => {
-    if (!target) return;
+    if (!targetEmailId) return;
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [target, onClose]);
+  }, [targetEmailId, onClose]);
 
   // Resolve the selected choice into a concrete reminder + validity. Memoized so
   // the preview and conflict list recompute only when inputs change.
