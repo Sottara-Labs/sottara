@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowRight,
@@ -168,7 +168,7 @@ function IdentityStep({ next, back }: { next: () => void; back: () => void }) {
   );
 }
 
-function PaymentStep({
+export function PaymentStep({
   state,
   update,
   next,
@@ -181,20 +181,39 @@ function PaymentStep({
 }) {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulateFailure, setSimulateFailure] = useState(false);
+  const mountedRef = useRef(true);
+  const timerIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      timerIdsRef.current.forEach((id) => clearTimeout(id));
+      timerIdsRef.current.clear();
+    };
+  }, []);
 
   const handleSimulatePayment = () => {
     setIsSimulating(true);
     update({ paymentStatus: "pending" });
 
-    setTimeout(() => {
+    const outerTimer = setTimeout(() => {
+      timerIdsRef.current.delete(outerTimer);
+      if (!mountedRef.current) return;
       if (simulateFailure) {
         update({ paymentStatus: "failed" });
       } else {
         update({ paymentStatus: "success" });
-        setTimeout(next, 800);
+        const nestedTimer = setTimeout(() => {
+          timerIdsRef.current.delete(nestedTimer);
+          if (!mountedRef.current) return;
+          next();
+        }, 800);
+        timerIdsRef.current.add(nestedTimer);
       }
       setIsSimulating(false);
     }, 1500);
+    timerIdsRef.current.add(outerTimer);
   };
 
   return (
@@ -322,7 +341,7 @@ function PaymentStep({
   );
 }
 
-function DeliveryStep({
+export function DeliveryStep({
   state,
   update,
   next,
@@ -333,12 +352,25 @@ function DeliveryStep({
 }) {
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulateFailure, setSimulateFailure] = useState(false);
+  const mountedRef = useRef(true);
+  const timerIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      timerIdsRef.current.forEach((id) => clearTimeout(id));
+      timerIdsRef.current.clear();
+    };
+  }, []);
 
   const handleSimulateDelivery = () => {
     setIsSimulating(true);
     update({ deliveryStatus: "pending" });
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timerIdsRef.current.delete(timer);
+      if (!mountedRef.current) return;
       if (simulateFailure) {
         update({ deliveryStatus: "failed" });
       } else {
@@ -346,6 +378,7 @@ function DeliveryStep({
       }
       setIsSimulating(false);
     }, 1500);
+    timerIdsRef.current.add(timer);
   };
 
   return (
@@ -457,16 +490,30 @@ function DeliveryStep({
   );
 }
 
-function RefundStep({ update }: { update: (patch: Partial<JourneyState>) => void }) {
+export function RefundStep({ update }: { update: (patch: Partial<JourneyState>) => void }) {
   const [refunded, setRefunded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const mountedRef = useRef(true);
+  const timerIdsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      timerIdsRef.current.forEach((id) => clearTimeout(id));
+      timerIdsRef.current.clear();
+    };
+  }, []);
 
   const handleRefund = () => {
     setIsProcessing(true);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timerIdsRef.current.delete(timer);
+      if (!mountedRef.current) return;
       setRefunded(true);
       setIsProcessing(false);
     }, 1500);
+    timerIdsRef.current.add(timer);
   };
 
   return (
