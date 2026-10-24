@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { OutboxEntry } from "@/services/storage/outbox";
+import {
+  getIncompleteEntries,
+  listOutbox,
+  upsertEntry,
+  type OutboxEntry,
+} from "@/services/storage/outbox";
 import { outboxEntryToEmail } from "@/features/mail/useMailSource";
 import { mergeLiveFolderCounts } from "@/features/mail/live-mailbox";
 import type { MailboxCounts } from "@/lib/api";
@@ -132,5 +137,74 @@ describe("outbox projection and mapping tests", () => {
     // sent and outbox should preserve local counts
     expect(merged.sent).toBe(4);
     expect(merged.outbox).toBe(2);
+  });
+  it("excludes malformed entries like {} without throwing and keeps them in storage for recovery", () => {
+    const backing = new Map<string, string>();
+    const prevWindow = (globalThis as any).window;
+    (globalThis as any).window = {
+      localStorage: {
+        getItem: (k: string) => backing.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          backing.set(k, v);
+        },
+      },
+    };
+    try {
+      backing.set(
+        "stealth.outbox.v1",
+        JSON.stringify([
+          {},
+          { id: "missing-created-at" },
+          {
+            id: "valid-1",
+            createdAt: "2026-08-20T12:00:00.000Z",
+          },
+        ]),
+      );
+
+      const list = listOutbox();
+      expect(list).toHaveLength(1);
+      expect(list[0].id).toBe("valid-1");
+      expect(list[0].subject).toBe("");
+      expect(list[0].recipients).toEqual([]);
+      expect(list[0].status).toBe("queued");
+      expect(list[0].attempts).toBe(0);
+      expect(list[0].updatedAt).toBe("2026-08-20T12:00:00.000Z");
+
+      expect(getIncompleteEntries().map((e) => e.id)).toEqual(["valid-1"]);
+
+      // Invalid entries remain in storage untouched during read and preserved across writes.
+      upsertEntry({
+        id: "valid-2",
+        createdAt: "2026-08-21T12:00:00.000Z",
+        updatedAt: "2026-08-21T12:00:00.000Z",
+        subject: "Second",
+        recipients: ["bob@stealth.xyz"],
+        status: "delivered",
+        attempts: 1,
+      });
+      const rawStored = JSON.parse(backing.get("stealth.outbox.v1")!);
+      expect(rawStored).toContainEqual({});
+    } finally {
+      (globalThis as any).window = prevWindow;
+    }
+  });
+
+  it("returns an empty outbox when localStorage access is blocked", () => {
+    const prevWindow = (globalThis as any).window;
+    const blockedWindow = {};
+    Object.defineProperty(blockedWindow, "localStorage", {
+      get() {
+        throw new Error("SecurityError: localStorage is disabled");
+      },
+    });
+    (globalThis as any).window = blockedWindow;
+    try {
+      expect(() => listOutbox()).not.toThrow();
+      expect(listOutbox()).toEqual([]);
+      expect(getIncompleteEntries()).toEqual([]);
+    } finally {
+      (globalThis as any).window = prevWindow;
+    }
   });
 });
