@@ -123,10 +123,15 @@ export function IdentityReviewTable({ rows, onChange }: Props) {
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <label htmlFor="identity-review-search" className="sr-only">
+            Search by name or address
+          </label>
           <input
+            id="identity-review-search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by name or address…"
+            aria-label="Search by name or address"
             className="w-full rounded-lg border border-surface-tint/10 bg-surface-tint/[0.04] py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-surface-tint/20"
           />
         </div>
@@ -181,20 +186,30 @@ export function IdentityReviewTable({ rows, onChange }: Props) {
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   <span className={cn("shrink-0", meta.color)}>{meta.icon}</span>
+                  <label htmlFor={`contact-name-${row.id}`} className="sr-only">
+                    Name
+                  </label>
                   <input
+                    id={`contact-name-${row.id}`}
                     value={row.name}
                     onChange={(e) => updateRow(row.id, { name: e.target.value })}
                     placeholder="Name"
+                    aria-label="Name"
                     className="min-w-0 flex-1 rounded-lg border border-surface-tint/10 bg-surface-tint/[0.04] px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-surface-tint/20"
                   />
                 </div>
+                <label htmlFor={`contact-trust-${row.id}`} className="sr-only">
+                  Trust
+                </label>
                 <select
+                  id={`contact-trust-${row.id}`}
                   value={row.trust}
                   onChange={(e) =>
                     updateRow(row.id, {
                       trust: e.target.value as ImportedContactRow["trust"],
                     })
                   }
+                  aria-label="Trust"
                   className={cn(
                     "appearance-none rounded-md border px-2 py-0.5 pr-5 text-[11px] font-medium transition",
                     TRUST_COLORS[row.trust],
@@ -213,10 +228,15 @@ export function IdentityReviewTable({ rows, onChange }: Props) {
                 </button>
               </div>
 
+              <label htmlFor={`contact-address-${row.id}`} className="sr-only">
+                Address
+              </label>
               <input
+                id={`contact-address-${row.id}`}
                 value={row.address}
                 onChange={(e) => updateRow(row.id, { address: e.target.value })}
                 placeholder="alice*stealth.xyz or GABC…"
+                aria-label="Address"
                 className={cn(
                   "w-full rounded-lg border bg-surface-tint/[0.04] px-2.5 py-1.5 font-mono text-xs outline-none focus:border-surface-tint/20",
                   row.error
