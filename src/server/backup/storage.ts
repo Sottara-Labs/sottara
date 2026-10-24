@@ -8,7 +8,22 @@
 // text for KV, raw bytes for R2).
 // ---------------------------------------------------------------------------
 
-import type { BackupStorage, BackupStoredValue, BackupStoreKind } from "./types";
+import {
+  BACKUP_KEY_PREFIX,
+  type BackupExecutionProfile,
+  type BackupStorage,
+  type BackupStoredValue,
+  type BackupStoreKind,
+} from "./types";
+
+export interface BackupStorageAdapterOptions {
+  /** Optional namespace prefix (e.g. "backup/") enforced on list and put. */
+  keyPrefix?: string;
+  /** Execution profile; non-rehearsal profiles fail closed when given an empty prefix. */
+  profile?: BackupExecutionProfile;
+  /** Marks a bucket/store as shared with live non-backup objects (refuses wipeFirst). */
+  shared?: boolean;
+}
 
 function encodeText(value: string): BackupStoredValue {
   return { encoding: "text", bytes: new TextEncoder().encode(value) };
@@ -18,26 +33,52 @@ function decodeText(value: BackupStoredValue): string {
   return new TextDecoder().decode(value.bytes);
 }
 
+function resolveListPrefix(
+  requestedPrefix: string | undefined,
+  options: BackupStorageAdapterOptions,
+): string {
+  const profile = options.profile ?? "rehearsal";
+  const configuredPrefix = options.keyPrefix ?? (profile !== "rehearsal" ? BACKUP_KEY_PREFIX : "");
+  const effective = requestedPrefix !== undefined ? requestedPrefix : configuredPrefix;
+  if (profile !== "rehearsal" && (!effective || effective.trim() === "")) {
+    throw new Error("listKeys requires a non-empty backup prefix in a non-rehearsal profile");
+  }
+  return effective;
+}
+
+function resolvePutKey(key: string, options: BackupStorageAdapterOptions): string {
+  const prefix = options.keyPrefix ?? (options.profile === "production" ? BACKUP_KEY_PREFIX : "");
+  if (!prefix) return key;
+  return key.startsWith(prefix) ? key : `${prefix}${key}`;
+}
+
 /** DO storage values are structured-cloneable; they round-trip as JSON. */
 export function createDurableObjectBackupStorage(
   state: Pick<DurableObjectState, "storage">,
+  options: BackupStorageAdapterOptions = {},
 ): BackupStorage {
   const storage = state.storage;
   return {
     store: "durable-object",
-    async listKeys(prefix = ""): Promise<string[]> {
+    keyPrefix: options.keyPrefix,
+    shared: options.shared,
+    profile: options.profile,
+    async listKeys(prefix?: string): Promise<string[]> {
+      const effectivePrefix = resolveListPrefix(prefix, options);
       const keys: string[] = [];
       let cursor: string | undefined;
       do {
         const page = (await storage.list({
-          prefix,
+          prefix: effectivePrefix,
           limit: 1000,
           ...(cursor ? { cursor } : {}),
         })) as
           | { keys: Array<{ name: string }>; list_complete: boolean; cursor?: string }
           | Map<string, unknown>;
         if (typeof page.keys === "function") {
-          for (const key of page.keys()) keys.push(key);
+          for (const key of page.keys()) {
+            if (key.startsWith(effectivePrefix)) keys.push(key);
+          }
           break;
         }
         const recordPage = page as {
@@ -45,7 +86,9 @@ export function createDurableObjectBackupStorage(
           list_complete: boolean;
           cursor?: string;
         };
-        for (const key of recordPage.keys) keys.push(key.name);
+        for (const key of recordPage.keys) {
+          if (key.name.startsWith(effectivePrefix)) keys.push(key.name);
+        }
         cursor = recordPage.cursor;
         if (!recordPage.list_complete && !cursor) break;
       } while (cursor);
@@ -63,7 +106,7 @@ export function createDurableObjectBackupStorage(
       if (value.encoding !== "json") {
         throw new Error("Durable Object storage requires JSON-encoded values");
       }
-      await storage.put(key, JSON.parse(decodeText(value)));
+      await storage.put(resolvePutKey(key, options), JSON.parse(decodeText(value)));
     },
     async delete(key: string): Promise<void> {
       await storage.delete(key);
@@ -72,19 +115,28 @@ export function createDurableObjectBackupStorage(
 }
 
 /** KV values are plain strings (the app stores JSON via `put(key, json)`). */
-export function createKvBackupStorage(kv: KVNamespace): BackupStorage {
+export function createKvBackupStorage(
+  kv: KVNamespace,
+  options: BackupStorageAdapterOptions = {},
+): BackupStorage {
   return {
     store: "kv",
-    async listKeys(prefix = ""): Promise<string[]> {
+    keyPrefix: options.keyPrefix,
+    shared: options.shared,
+    profile: options.profile,
+    async listKeys(prefix?: string): Promise<string[]> {
+      const effectivePrefix = resolveListPrefix(prefix, options);
       const keys: string[] = [];
       let cursor: string | undefined;
       do {
         const page = (await (kv as any).list({
-          prefix,
+          prefix: effectivePrefix,
           limit: 1000,
           ...(cursor ? { cursor } : {}),
         })) as { keys: Array<{ name: string }>; list_complete: boolean; cursor?: string };
-        for (const key of page.keys) keys.push(key.name);
+        for (const key of page.keys) {
+          if (key.name.startsWith(effectivePrefix)) keys.push(key.name);
+        }
         cursor = page.cursor;
         if (!page.list_complete && !cursor) break;
       } while (cursor);
@@ -99,7 +151,7 @@ export function createKvBackupStorage(kv: KVNamespace): BackupStorage {
       if (value.encoding !== "text") {
         throw new Error("KV storage requires text-encoded values");
       }
-      await kv.put(key, decodeText(value));
+      await kv.put(resolvePutKey(key, options), decodeText(value));
     },
     async delete(key: string): Promise<void> {
       await kv.delete(key);
@@ -108,15 +160,28 @@ export function createKvBackupStorage(kv: KVNamespace): BackupStorage {
 }
 
 /** R2 stores raw bytes. */
-export function createR2BackupStorage(bucket: R2Bucket): BackupStorage {
+export function createR2BackupStorage(
+  bucket: R2Bucket,
+  options: BackupStorageAdapterOptions = {},
+): BackupStorage {
   return {
     store: "r2",
-    async listKeys(prefix = ""): Promise<string[]> {
+    keyPrefix: options.keyPrefix,
+    shared: options.shared,
+    profile: options.profile,
+    async listKeys(prefix?: string): Promise<string[]> {
+      const effectivePrefix = resolveListPrefix(prefix, options);
       const keys: string[] = [];
       let cursor: string | undefined;
       do {
-        const page = await bucket.list({ prefix, limit: 1000, ...(cursor ? { cursor } : {}) });
-        for (const obj of page.objects) keys.push(obj.key);
+        const page = await bucket.list({
+          prefix: effectivePrefix,
+          limit: 1000,
+          ...(cursor ? { cursor } : {}),
+        });
+        for (const obj of page.objects) {
+          if (obj.key.startsWith(effectivePrefix)) keys.push(obj.key);
+        }
         cursor = page.cursor;
         if (!page.truncated && !cursor) break;
       } while (cursor);
@@ -131,7 +196,7 @@ export function createR2BackupStorage(bucket: R2Bucket): BackupStorage {
       if (value.encoding !== "bytes") {
         throw new Error("R2 storage requires bytes-encoded values");
       }
-      await bucket.put(key, value.bytes);
+      await bucket.put(resolvePutKey(key, options), value.bytes);
     },
     async delete(key: string): Promise<void> {
       await bucket.delete(key);
@@ -143,22 +208,29 @@ export function createR2BackupStorage(bucket: R2Bucket): BackupStorage {
  * In-memory store used by unit tests and the rehearsal harness. Values are
  * kept as JSON-encoded bytes to mimic DO semantics most closely.
  */
-export function createMemoryBackupStorage(store: BackupStoreKind): BackupStorage & {
+export function createMemoryBackupStorage(
+  store: BackupStoreKind,
+  options: BackupStorageAdapterOptions = {},
+): BackupStorage & {
   _size(): Promise<number>;
   _values: Map<string, BackupStoredValue>;
 } {
   const values = new Map<string, BackupStoredValue>();
   return {
     store,
+    keyPrefix: options.keyPrefix,
+    shared: options.shared,
+    profile: options.profile,
     _values: values,
-    async listKeys(prefix = ""): Promise<string[]> {
-      return [...values.keys()].filter((key) => key.startsWith(prefix));
+    async listKeys(prefix?: string): Promise<string[]> {
+      const effectivePrefix = resolveListPrefix(prefix, options);
+      return [...values.keys()].filter((key) => key.startsWith(effectivePrefix));
     },
     async get(key: string): Promise<BackupStoredValue | null> {
       return values.get(key) ?? null;
     },
     async put(key: string, value: BackupStoredValue): Promise<void> {
-      values.set(key, value);
+      values.set(resolvePutKey(key, options), value);
     },
     async delete(key: string): Promise<void> {
       values.delete(key);

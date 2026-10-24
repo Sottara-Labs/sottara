@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createBackup, restoreBackup, verifyBackup } from "@/server/backup/engine";
 import { createMemoryBackupStorage } from "@/server/backup/storage";
+import { BACKUP_KEY_PREFIX } from "@/server/backup/types";
 
 const TEST_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -142,5 +143,57 @@ describe("backup engine", () => {
     expect(order.indexOf("user:id:u_1")).toBeLessThan(order.indexOf("policy:p_1"));
     expect(order.indexOf("policy:p_1")).toBeLessThan(order.indexOf("relay:message:m_1"));
     expect(order.indexOf("relay:message:m_1")).toBeLessThan(order.indexOf("idempotency:op_1"));
+  });
+  it("records the backup/ prefix in the archive header and listKeys returns only the backup prefix", async () => {
+    const r2Store = createMemoryBackupStorage("r2", { keyPrefix: BACKUP_KEY_PREFIX });
+    r2Store._values.set("live/production-asset.bin", {
+      encoding: "bytes",
+      bytes: enc("unrelated-live-object"),
+    });
+    await r2Store.put("envelopes/m1/aaaa", { encoding: "bytes", bytes: enc("encrypted-envelope") });
+
+    const keys = await r2Store.listKeys();
+    expect(keys).toEqual(["backup/envelopes/m1/aaaa"]);
+
+    const created = await createBackup([r2Store], TEST_KEY);
+    expect(created.archive?.keyPrefix).toBe("backup/");
+
+    const prodStore = createMemoryBackupStorage("r2", { profile: "production" });
+    await expect(prodStore.listKeys("")).rejects.toThrow("non-empty backup prefix");
+  });
+
+  it("leaves non-backup keys untouched during restore and rejects wipeFirst on a shared bucket", async () => {
+    const sourceR2 = createMemoryBackupStorage("r2");
+    await sourceR2.put("envelopes/m1/aaaa", { encoding: "bytes", bytes: enc("backup-payload") });
+    const created = await createBackup([sourceR2], TEST_KEY);
+
+    // 1. Restore with wipeFirst against a bucket containing unrelated non-backup keys leaves them untouched
+    const targetR2 = createMemoryBackupStorage("r2");
+    await targetR2.put("live-objects/unrelated.txt", {
+      encoding: "bytes",
+      bytes: enc("do-not-delete"),
+    });
+    await targetR2.put("envelopes/old/bbbb", {
+      encoding: "bytes",
+      bytes: enc("stale-backup-object"),
+    });
+
+    const restored = await restoreBackup(created.archive!, TEST_KEY, [targetR2], {
+      wipeFirst: true,
+    });
+    expect(restored.ok).toBe(true);
+    expect(await targetR2.get("live-objects/unrelated.txt")).not.toBeNull();
+    expect(await targetR2.get("envelopes/old/bbbb")).toBeNull();
+    expect(await targetR2.get("envelopes/m1/aaaa")).not.toBeNull();
+
+    // 2. wipeFirst on a shared bucket without a dedicated backup prefix is rejected
+    const sharedR2 = createMemoryBackupStorage("r2", { shared: true });
+    await sharedR2.put("live-objects/critical.txt", { encoding: "bytes", bytes: enc("keep") });
+    const rejected = await restoreBackup(created.archive!, TEST_KEY, [sharedR2], {
+      wipeFirst: true,
+    });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.errors[0]).toContain("wipeFirst is refused on shared");
+    expect(await sharedR2.get("live-objects/critical.txt")).not.toBeNull();
   });
 });

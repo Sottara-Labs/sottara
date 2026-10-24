@@ -40,7 +40,7 @@ import type {
   BackupStorage,
   BackupVerifyReport,
 } from "./types";
-import { BACKUP_ARCHIVE_VERSION, BACKUP_FORMAT } from "./types";
+import { BACKUP_ARCHIVE_VERSION, BACKUP_FORMAT, BACKUP_KEY_PREFIX } from "./types";
 
 export const GENERATED_BY = "stealth-backup/1";
 
@@ -103,12 +103,24 @@ const RESTORE_STAGES: ReadonlyArray<{ stage: number; prefixes: string[] }> = [
   { stage: 4, prefixes: ["staged/", "envelopes/", "attachments/"] },
 ];
 
+function isKnownBackupKey(key: string, keyPrefix: string = BACKUP_KEY_PREFIX): boolean {
+  if (keyPrefix && key.startsWith(keyPrefix)) return true;
+  const stripped = keyPrefix && key.startsWith(keyPrefix) ? key.slice(keyPrefix.length) : key;
+  for (const group of RESTORE_STAGES) {
+    for (const prefix of group.prefixes) {
+      if (stripped.startsWith(prefix)) return true;
+    }
+  }
+  return false;
+}
+
 function restoreStage(store: string, key: string): number {
+  const normalized = key.startsWith(BACKUP_KEY_PREFIX) ? key.slice(BACKUP_KEY_PREFIX.length) : key;
   if (store === "r2") return 4;
   for (const group of RESTORE_STAGES) {
     if (group.stage === 4) continue;
     for (const prefix of group.prefixes) {
-      if (key.startsWith(prefix)) return group.stage;
+      if (normalized.startsWith(prefix)) return group.stage;
     }
   }
   // Unclassified keys restore last.
@@ -196,6 +208,7 @@ export async function createBackup(
     createdAt,
     generatedBy: GENERATED_BY,
     source: options.source ?? "local-emulation",
+    keyPrefix: options.keyPrefix ?? BACKUP_KEY_PREFIX,
     encryption: {
       cipher: "AES-256-GCM",
       kdf: "HKDF-SHA256",
@@ -315,8 +328,22 @@ export async function restoreBackup(
   if (options.wipeFirst) {
     for (const store of selectedStores) {
       const target = byStore.get(store)!;
-      for (const key of await target.listKeys()) {
-        await target.delete(key);
+      if (target.shared && !target.keyPrefix) {
+        return {
+          command: "restore",
+          generatedAt: new Date().toISOString(),
+          ok: false,
+          restored: 0,
+          stores: [],
+          durationMs: Date.now() - startedAt,
+          errors: [`wipeFirst is refused on shared ${store} bucket without a dedicated backup prefix`],
+        };
+      }
+      const wipePrefix = target.keyPrefix ?? options.keyPrefix ?? "";
+      for (const key of await target.listKeys(wipePrefix)) {
+        if (isKnownBackupKey(key, target.keyPrefix ?? archive.keyPrefix ?? BACKUP_KEY_PREFIX)) {
+          await target.delete(key);
+        }
       }
     }
   }

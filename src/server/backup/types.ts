@@ -14,6 +14,8 @@ export type BackupStoreKind = "durable-object" | "kv" | "r2";
 
 export const BACKUP_FORMAT = "stealth-backup" as const;
 export const BACKUP_ARCHIVE_VERSION = 1 as const;
+export const BACKUP_KEY_PREFIX = "backup/" as const;
+export type BackupExecutionProfile = "rehearsal" | "production";
 
 /** How a stored value is encoded inside the archive. */
 export type BackupValueEncoding = "json" | "text" | "bytes";
@@ -31,6 +33,9 @@ export interface BackupStoredValue {
  */
 export interface BackupStorage {
   readonly store: BackupStoreKind;
+  readonly keyPrefix?: string;
+  readonly shared?: boolean;
+  readonly profile?: BackupExecutionProfile;
   listKeys(prefix?: string): Promise<string[]>;
   get(key: string): Promise<BackupStoredValue | null>;
   put(key: string, value: BackupStoredValue): Promise<void>;
@@ -71,6 +76,8 @@ export interface BackupArchiveHeader {
   generatedBy: string;
   /** Redacted environment label, e.g. "local-emulation". */
   source: string;
+  /** Dedicated backup namespace prefix recorded in the header. */
+  keyPrefix?: string;
   encryption: {
     cipher: "AES-256-GCM";
     kdf: "HKDF-SHA256";
@@ -109,6 +116,8 @@ export interface BackupRunOptions {
   key?: string;
   /** Environment label recorded in the archive header. */
   source?: string;
+  /** Dedicated backup key prefix (defaults to "backup/"). */
+  keyPrefix?: string;
 }
 
 export interface BackupCreateReport {
