@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Check, FolderInput, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useFocusTrap } from "@/lib/useFocusTrap";
 import { getFolderLabel } from "@/components/mail/data";
 import { SenderBadge } from "./SenderBadge";
 import {
@@ -38,6 +39,41 @@ export function SenderConversionDialog({ target, onConfirm, onClose }: Props) {
   const [choice, setChoice] = useState<SenderPolicyChoice | null>(null);
   const [phase, setPhase] = useState<Phase>("choose");
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const close = useCallback(() => closeRef.current(), []);
+  const dialogRef = useFocusTrap(target !== null, close);
+
+  // Move initial focus to the first meaningful control on open or phase switch
+  useEffect(() => {
+    if (!target) return;
+    const focusFirstControl = () => {
+      if (!dialogRef.current) return;
+      if (phase === "done") {
+        const doneButton = dialogRef.current.querySelector<HTMLElement>(
+          "button:not([aria-label='Cancel'])",
+        );
+        doneButton?.focus();
+        return;
+      }
+      const firstPolicy = dialogRef.current.querySelector<HTMLElement>(
+        "button[data-sender-policy], .grid button",
+      );
+      if (firstPolicy) {
+        firstPolicy.focus();
+        return;
+      }
+      const firstFocusable = dialogRef.current.querySelector<HTMLElement>(
+        "button:not([aria-label='Cancel']), button",
+      );
+      firstFocusable?.focus();
+    };
+
+    focusFirstControl();
+    const t = globalThis.setTimeout(focusFirstControl, 0);
+    return () => globalThis.clearTimeout(t);
+  }, [target, phase]);
+
   // Reset whenever a different sender (or a fresh open) drives the dialog so a
   // previous selection never leaks into the next conversion.
   useEffect(() => {
@@ -46,16 +82,6 @@ export function SenderConversionDialog({ target, onConfirm, onClose }: Props) {
       setPhase("choose");
     }
   }, [target?.emailId, target]);
-
-  // Esc cancels — same no-op semantics as the Cancel button.
-  useEffect(() => {
-    if (!target) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [target, onClose]);
 
   const handleConfirm = () => {
     if (!target || !choice) return;
@@ -80,21 +106,24 @@ export function SenderConversionDialog({ target, onConfirm, onClose }: Props) {
 
           <motion.div
             key="sender-conversion-panel"
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-label="Convert sender"
+            aria-labelledby="sender-conversion-title"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.96, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 8 }}
             transition={{ type: "spring", stiffness: 300, damping: 28 }}
-            className="glass-strong fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl"
+            className="glass-strong fixed left-1/2 top-1/2 z-50 w-[min(460px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl outline-none"
           >
             <div className="flex items-start justify-between gap-3 px-6 pt-5">
               <div className="min-w-0 space-y-1">
                 <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
                   {phase === "choose" ? "Convert sender" : "Sender updated"}
                 </p>
-                <h2 className="truncate text-base font-semibold text-foreground">
+                <h2 id="sender-conversion-title" className="truncate text-base font-semibold text-foreground">
                   {target.sender}
                 </h2>
                 <p className="truncate text-xs text-muted-foreground">{target.address}</p>
@@ -131,6 +160,7 @@ export function SenderConversionDialog({ target, onConfirm, onClose }: Props) {
                       return (
                         <button
                           key={option.value}
+                          data-sender-policy={option.value}
                           onClick={() => setChoice(option.value)}
                           aria-pressed={selected}
                           className={cn(
@@ -185,6 +215,7 @@ export function SenderConversionDialog({ target, onConfirm, onClose }: Props) {
                     <button
                       onClick={handleConfirm}
                       disabled={!choice}
+                      data-sender-conversion-confirm="true"
                       className={cn(
                         "flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition",
                         choice
