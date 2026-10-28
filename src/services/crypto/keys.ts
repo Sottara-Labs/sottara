@@ -36,7 +36,7 @@ export class KeyUsageError extends Error {
 }
 
 const AES_ALGORITHM = { name: "AES-GCM", length: 256 } as const;
-const SIGNING_ALGORITHM = { name: "ECDSA", namedCurve: "P-256" } as const;
+const SIGNING_ALGORITHM = { name: "Ed25519" } as const;
 const AES_KEY_BYTES = 32;
 
 /** Copy bytes into a fresh ArrayBuffer (an unconditionally valid BufferSource). */
@@ -100,8 +100,13 @@ export interface SigningKeyPair {
 }
 
 /**
- * Generate an ECDSA P-256 signing pair. The private key can only `sign` and is
+ * Generate an Ed25519 signing pair. The private key can only `sign` and is
  * non-extractable; the public key can only `verify`. Session-lived.
+ *
+ * Uses Ed25519 to match `verifyEnvelopeSignature` (which expects Ed25519
+ * keys from `@stellar/stellar-sdk`). The previous ECDSA P-256 factory
+ * produced keys that could never verify against the project's own
+ * verification path.
  */
 export async function createSigningKeyPair(): Promise<SigningKeyPair> {
   const pair = (await crypto.subtle.generateKey(SIGNING_ALGORITHM, false, [
@@ -112,8 +117,8 @@ export async function createSigningKeyPair(): Promise<SigningKeyPair> {
 }
 
 /**
- * Import a distributed verification public key (SPKI DER). verify-only and
- * extractable (public material). Cannot sign.
+ * Import a distributed Ed25519 verification public key (SPKI DER).
+ * verify-only and extractable (public material). Cannot sign.
  */
 export async function createVerificationKey(spki: Uint8Array): Promise<CryptoKey> {
   if (!(spki instanceof Uint8Array) || spki.length === 0) {
