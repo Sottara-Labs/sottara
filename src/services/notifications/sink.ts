@@ -1,5 +1,9 @@
 import type { DeliveryReceipt, NotificationAdapter, VerificationEmailMessage } from "./adapter";
 
+interface BufferedMessage extends VerificationEmailMessage {
+  capturedAt: Date;
+}
+
 /**
  * BETA-005: Local-development capture sink.
  *
@@ -15,38 +19,92 @@ import type { DeliveryReceipt, NotificationAdapter, VerificationEmailMessage } f
 export class SinkNotificationAdapter implements NotificationAdapter {
   readonly transport = "sink" as const;
 
-  private readonly messages: VerificationEmailMessage[] = [];
+  private readonly messages: BufferedMessage[] = [];
 
-  constructor(private readonly maxBuffered: number = 1000) {}
+  constructor(
+    private readonly maxBuffered: number = 1000,
+    private readonly maxRetentionMs: number = 24 * 60 * 60 * 1000,
+  ) {}
+
+  private pruneExpired(now: Date = new Date()): void {
+    const nowMs = now.getTime();
+    let writeIdx = 0;
+    for (let i = 0; i < this.messages.length; i++) {
+      const item = this.messages[i];
+      const itemExpiresMs =
+        item.expiresAt instanceof Date
+          ? item.expiresAt.getTime()
+          : new Date(item.expiresAt).getTime();
+      const itemCapturedMs = item.capturedAt ? item.capturedAt.getTime() : itemExpiresMs;
+      const isExpired =
+        nowMs >= itemExpiresMs ||
+        (this.maxRetentionMs > 0 && nowMs - itemCapturedMs >= this.maxRetentionMs);
+      if (!isExpired) {
+        this.messages[writeIdx++] = item;
+      }
+    }
+    this.messages.length = writeIdx;
+  }
 
   async deliverVerificationEmail(message: VerificationEmailMessage): Promise<DeliveryReceipt> {
-    if (this.messages.length >= this.maxBuffered) {
-      this.messages.shift();
+    const now = new Date();
+    this.pruneExpired(now);
+
+    const expiresAt = new Date(message.expiresAt);
+    const nowMs = now.getTime();
+    const isExpired = nowMs >= expiresAt.getTime();
+
+    if (!isExpired) {
+      if (this.messages.length >= this.maxBuffered) {
+        this.messages.shift();
+      }
+      this.messages.push({
+        ...message,
+        expiresAt,
+        capturedAt: now,
+      });
     }
-    this.messages.push({ ...message, expiresAt: new Date(message.expiresAt) });
+
+    const providerRef =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? `sink-${crypto.randomUUID()}`
+        : `sink-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
     return {
       transport: "sink",
       accepted: true,
-      providerRef: `sink-${this.messages.length}`,
+      providerRef,
       safeTargetReference: await sha256Reference(message.to),
     };
   }
 
-  /** Messages captured so far, oldest first. Never persisted. */
+  /** Messages captured so far, oldest first. Never persisted. Expired messages are pruned. */
   get capturedMessages(): readonly VerificationEmailMessage[] {
+    this.pruneExpired();
     return this.messages.map((message) => ({
-      ...message,
+      to: message.to,
+      purpose: message.purpose,
+      verificationUrl: message.verificationUrl,
       expiresAt: new Date(message.expiresAt),
     }));
   }
 
-  /** Most recently captured message, if any. */
+  /** Most recently captured message, if any. Expired messages are pruned. */
   get latestMessage(): VerificationEmailMessage | null {
+    this.pruneExpired();
     const latest = this.messages.at(-1);
-    return latest ? { ...latest, expiresAt: new Date(latest.expiresAt) } : null;
+    return latest
+      ? {
+          to: latest.to,
+          purpose: latest.purpose,
+          verificationUrl: latest.verificationUrl,
+          expiresAt: new Date(latest.expiresAt),
+        }
+      : null;
   }
 
   get size(): number {
+    this.pruneExpired();
     return this.messages.length;
   }
 
