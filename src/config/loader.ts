@@ -222,6 +222,8 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const smtpSecure = parseBool(env.STEALTH_SMTP_SECURE, smtpPort === 465);
   const smtpStartTls = parseBool(env.STEALTH_SMTP_STARTTLS, smtpPort !== 465);
   const smtpUsername = (env.STEALTH_SMTP_USERNAME as string) || undefined;
+  const smtpAllowSelfSigned = parseBool(env.STEALTH_SMTP_ALLOW_SELF_SIGNED, false);
+  const smtpCa = (env.STEALTH_SMTP_CA as string) || undefined;
   const notificationFrom =
     (env.STEALTH_NOTIFICATION_FROM as string) ??
     (isProd ? "noreply@app.betasmail.com" : "stealth@localhost");
@@ -336,6 +338,11 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
         "Configuration error: STEALTH_CORS_ALLOWED_ORIGINS must contain explicit origin URLs in production.",
       );
     }
+    if (smtpAllowSelfSigned) {
+      throw new Error(
+        "Configuration error: STEALTH_SMTP_ALLOW_SELF_SIGNED cannot be enabled in production.",
+      );
+    }
   }
 
   const rawConfig = {
@@ -405,6 +412,8 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
         startTls: smtpStartTls,
         username: smtpUsername,
         password: smtpPassword,
+        allowSelfSigned: smtpAllowSelfSigned,
+        ca: smtpCa,
       },
     },
     betaControl: {
@@ -460,6 +469,8 @@ export function getPublicConfig(config: BetaRuntimeConfig): PublicConfig {
         port: config.notifications.smtp.port,
         secure: config.notifications.smtp.secure,
         startTls: config.notifications.smtp.startTls,
+        allowSelfSigned: config.notifications.smtp.allowSelfSigned,
+        ca: config.notifications.smtp.ca,
       },
     },
   };

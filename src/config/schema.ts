@@ -123,6 +123,8 @@ export const smtpConfigSchema = z.object({
   startTls: z.boolean(),
   username: z.string().optional(),
   password: z.string().optional(),
+  allowSelfSigned: z.boolean().default(false),
+  ca: z.string().optional(),
 });
 export type SmtpConfig = z.infer<typeof smtpConfigSchema>;
 
@@ -196,6 +198,8 @@ export const publicConfigSchema = z.object({
       port: z.number(),
       secure: z.boolean(),
       startTls: z.boolean(),
+      allowSelfSigned: z.boolean().default(false),
+      ca: z.string().optional(),
     }),
   }),
 });

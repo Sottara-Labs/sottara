@@ -53,6 +53,8 @@ export interface SmtpConnectionOptions {
   host: string;
   port: number;
   secure: boolean;
+  allowSelfSigned?: boolean;
+  ca?: string | Buffer;
 }
 
 export type SmtpSocketFactory = (
@@ -83,11 +85,13 @@ export async function defaultSmtpSocketFactory(
     const { createConnection } = await import("node:net");
     const { connect: tlsConnect } = await import("node:tls");
     if (options.secure) {
+      const { isIP } = await import("node:net");
       return tlsConnect({
         host: options.host,
         port: options.port,
-        servername: options.host,
-        rejectUnauthorized: false,
+        servername: isIP(options.host) ? undefined : options.host,
+        rejectUnauthorized: !options.allowSelfSigned,
+        ca: options.ca,
       }) as unknown as SmtpSocketLike;
     }
     return createConnection({
@@ -239,8 +243,8 @@ export class SmtpNotificationAdapter implements NotificationAdapter {
   }
 
   async deliverVerificationEmail(message: VerificationEmailMessage): Promise<DeliveryReceipt> {
-    const { host, port, secure } = this.config;
-    const socket = await this.socketFactory({ host, port, secure });
+    const { host, port, secure, allowSelfSigned, ca } = this.config;
+    const socket = await this.socketFactory({ host, port, secure, allowSelfSigned, ca });
     const replies = new ReplyStream(socket);
     const messageId = `<${crypto.randomUUID()}@stealth.mail>`;
 
