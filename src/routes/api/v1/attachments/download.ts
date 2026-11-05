@@ -55,11 +55,14 @@ export const Route = createFileRoute("/api/v1/attachments/download")({
             throw new ApiError(404, "not_found", "Attachment chunk not found");
           }
 
-          return apiSuccess(request, {
-            chunk_data: Array.from(stored.bytes),
-            content_type: stored.metadata.contentType,
-            content_length: stored.metadata.contentLength,
-            chunk_index: parsed.chunk_index,
+          return new Response(stored.bytes, {
+            status: 200,
+            headers: {
+              "content-type": "application/octet-stream",
+              "content-length": String(stored.bytes.byteLength),
+              "x-content-type": stored.metadata.contentType ?? "application/octet-stream",
+              "x-chunk-index": String(parsed.chunk_index),
+            },
           });
         }),
     },
