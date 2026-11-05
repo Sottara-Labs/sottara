@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { VerificationEmailMessage } from "../../../src/services/notifications/adapter";
 import {
+  adaptWorkersSocketToSmtpSocketLike,
+  type CloudflareWorkerSocket,
   SmtpError,
   SmtpNotificationAdapter,
   type SmtpSocketLike,
@@ -210,5 +212,153 @@ describe("BETA-005: SmtpNotificationAdapter (scripted conversations)", () => {
       name: "SmtpError",
       command: "connect",
     });
+  });
+
+  it("delivers verification email through adaptWorkersSocketToSmtpSocketLike with scripted Workers socket", async () => {
+    class ScriptedWorkerSocket implements CloudflareWorkerSocket {
+      readonly written: string[] = [];
+      readonly readable: ReadableStream<Uint8Array>;
+      readonly writable: WritableStream<Uint8Array>;
+      private readableController!: ReadableStreamDefaultController<Uint8Array>;
+      closedPromiseResolve!: () => void;
+      readonly closed: Promise<void>;
+      readonly opened = Promise.resolve();
+
+      constructor(
+        greetWith: string,
+        private readonly respond: (line: string) => string | null,
+      ) {
+        this.closed = new Promise<void>((resolve) => {
+          this.closedPromiseResolve = resolve;
+        });
+
+        this.readable = new ReadableStream<Uint8Array>({
+          start: (controller) => {
+            this.readableController = controller;
+            if (greetWith) {
+              queueMicrotask(() => {
+                controller.enqueue(new TextEncoder().encode(greetWith));
+              });
+            }
+          },
+        });
+
+        this.writable = new WritableStream<Uint8Array>({
+          write: (chunk) => {
+            const text = new TextDecoder().decode(chunk);
+            this.written.push(text);
+            const rawLine = text.endsWith("\r\n") ? text.slice(0, -2) : text;
+            const reply = this.respond(rawLine);
+            if (reply !== null) {
+              queueMicrotask(() => {
+                try {
+                  this.readableController.enqueue(new TextEncoder().encode(reply));
+                } catch {
+                  // stream closed
+                }
+              });
+            }
+          },
+        });
+      }
+
+      close() {
+        try {
+          this.readableController.close();
+        } catch {
+          // already closed
+        }
+        this.closedPromiseResolve();
+      }
+
+      startTls() {
+        return this;
+      }
+    }
+
+    const workerSocket = new ScriptedWorkerSocket(
+      "220 smtp.test ESMTP ready\r\n",
+      fullConversation,
+    );
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      socketFactory: async () => adaptWorkersSocketToSmtpSocketLike(workerSocket),
+    });
+
+    const receipt = await adapter.deliverVerificationEmail(message);
+    expect(receipt.accepted).toBe(true);
+    expect(receipt.transport).toBe("smtp");
+
+    const commands = workerSocket.written
+      .map((chunk) => chunk.split("\r\n")[0])
+      .filter((line) => /^(EHLO|MAIL FROM|RCPT TO|DATA|QUIT)/.test(line));
+    expect(commands).toEqual([
+      "EHLO stealth.mail",
+      "MAIL FROM:<no-reply@stealth.mail>",
+      "RCPT TO:<alice@stealth.mail>",
+      "DATA",
+      "QUIT",
+    ]);
+  });
+
+  it("rejects pending reply immediately when Workers socket closes prematurely instead of timing out", async () => {
+    class AbruptClosingWorkerSocket implements CloudflareWorkerSocket {
+      readonly readable: ReadableStream<Uint8Array>;
+      readonly writable: WritableStream<Uint8Array>;
+      private readableController!: ReadableStreamDefaultController<Uint8Array>;
+      closedPromiseResolve!: () => void;
+      readonly closed: Promise<void>;
+      readonly opened = Promise.resolve();
+
+      constructor() {
+        this.closed = new Promise<void>((resolve) => {
+          this.closedPromiseResolve = resolve;
+        });
+
+        this.readable = new ReadableStream<Uint8Array>({
+          start: (controller) => {
+            this.readableController = controller;
+            // Send greeting so connect succeeds, but close as soon as client sends EHLO
+            queueMicrotask(() => {
+              controller.enqueue(new TextEncoder().encode("220 smtp.test ESMTP ready\r\n"));
+            });
+          },
+        });
+
+        this.writable = new WritableStream<Uint8Array>({
+          write: () => {
+            // As soon as the first command (EHLO) is written, close socket immediately without replying
+            queueMicrotask(() => {
+              this.close();
+            });
+          },
+        });
+      }
+
+      close() {
+        try {
+          this.readableController.close();
+        } catch {
+          // already closed
+        }
+        this.closedPromiseResolve();
+      }
+    }
+
+    const workerSocket = new AbruptClosingWorkerSocket();
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      timeoutMs: 15_000, // Long timeout: test must NOT wait for this timeout
+      socketFactory: async () => adaptWorkersSocketToSmtpSocketLike(workerSocket),
+    });
+
+    const start = Date.now();
+    await expect(adapter.deliverVerificationEmail(message)).rejects.toMatchObject({
+      name: "SmtpError",
+      message: expect.stringMatching(/closed/i),
+    });
+    const elapsed = Date.now() - start;
+    // Must reject rapidly (<< 2000ms), NOT after the 15,000ms timeout
+    expect(elapsed).toBeLessThan(2000);
   });
 });
