@@ -9,6 +9,7 @@ import {
 import { SinkNotificationAdapter } from "./sink";
 import { redactNotificationText } from "./redaction";
 import { classifySmtpReplyCode } from "./delivery-status";
+import { incrementCounter } from "../../server/api/metrics";
 
 function buildBaseAdapter(
   config: NotificationsConfig,
@@ -122,6 +123,7 @@ export class InviteFallbackNotificationAdapter implements NotificationAdapter {
   readonly transport: NotificationAdapter["transport"];
   private readonly sink = new SinkNotificationAdapter();
   private fellBack = false;
+  private lastFailureClass?: string;
 
   constructor(
     private readonly primary: NotificationAdapter,
@@ -132,6 +134,10 @@ export class InviteFallbackNotificationAdapter implements NotificationAdapter {
 
   didFallBack(): boolean {
     return this.fellBack;
+  }
+
+  getLastFailureClass(): string | undefined {
+    return this.lastFailureClass;
   }
 
   getCaptureSink(): SinkNotificationAdapter {
@@ -145,7 +151,21 @@ export class InviteFallbackNotificationAdapter implements NotificationAdapter {
       if (this.profile === "production") {
         throw error;
       }
+      // Never mask coded SMTP reply errors (e.g. 550 hard bounce, 4xx/5xx responses from MTA);
+      // only fall back on transport-unavailable errors (connection refused, DNS, missing host, etc.).
+      if (error instanceof SmtpError && typeof error.replyCode === "number") {
+        throw error;
+      }
+
       this.fellBack = true;
+      const failureClass = safeDeliveryFailureClass(error);
+      this.lastFailureClass = failureClass;
+      try {
+        incrementCounter("notification_invite_fallback_total", { reasonClass: failureClass });
+      } catch {
+        // Safe no-op if metrics collector is uninitialized
+      }
+
       // Capture locally for operators; never rethrow secrets.
       void redactNotificationText(error);
       const receipt = await this.sink.deliverVerificationEmail(message);
