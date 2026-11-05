@@ -7,6 +7,7 @@ import {
   type CommandId,
 } from "../../../src/features/command-palette/types";
 import {
+  SETTINGS_SHORTCUTS,
   buildPaletteModel,
   fuzzyScore,
   selectableRows,
@@ -168,8 +169,15 @@ describe("fuzzyScore", () => {
     expect(fuzzyScore("arc", "Archive")).toBeGreaterThan(fuzzyScore("aie", "Archive"));
   });
 
-  it("rewards word-boundary matches", () => {
+  it("rewards word-boundary matches after space, -, _, ., @, *, or at index 0 over mid-word matches", () => {
     expect(fuzzyScore("send", "Approve sender")).toBeGreaterThan(0);
+    for (const sep of [" ", "-", "_", ".", "@", "*"]) {
+      const boundaryTarget = `alpha${sep}beta`;
+      const midWordTarget = `alphaxbeta`;
+      expect(fuzzyScore("b", boundaryTarget)).toBeGreaterThan(fuzzyScore("b", midWordTarget));
+    }
+    // Index 0 boundary vs mid-word match of same length
+    expect(fuzzyScore("a", "alpha")).toBeGreaterThan(fuzzyScore("l", "alpha"));
   });
 
   it("matches case-insensitively", () => {
@@ -179,7 +187,8 @@ describe("fuzzyScore", () => {
     );
   });
 
-  it("ignores leading and trailing whitespace", () => {
+  it("ignores leading and trailing whitespace and returns 0 for whitespace-only queries", () => {
+    expect(fuzzyScore("   ", "Archive thread")).toBe(0);
     expect(fuzzyScore("  compose  ", "Compose new email")).toEqual(
       fuzzyScore("compose", "Compose new email"),
     );
@@ -220,18 +229,33 @@ describe("buildPaletteModel", () => {
     }),
   ];
 
-  it("shows contextual command groups for an empty query", () => {
+  it("shows contextual command groups in exact GROUP_ORDER for an empty query", () => {
     const sections = buildPaletteModel(ctxOf({ email: emails[0] }), "", emails);
-    expect(sections.length).toBeGreaterThan(0);
+    expect(sections.map((s) => s.id)).toEqual([
+      "cmd-protocol",
+      "cmd-delivery",
+      "cmd-message",
+      "cmd-navigation",
+      "cmd-app",
+    ]);
+    expect(sections.map((s) => s.title)).toEqual([
+      "Sender & proof",
+      "Delivery",
+      "Message",
+      "Navigation",
+      "App",
+    ]);
     expect(sections.every((s) => s.rows.every((r) => r.type === "command"))).toBe(true);
-    // Protocol group surfaces first.
-    expect(sections[0].title).toBe("Sender & proof");
   });
 
-  it("fuzzy-finds folders by name", () => {
+  it("fuzzy-finds folders by name and excludes the 'all' folder", () => {
     const sections = buildPaletteModel(ctxOf(), "spam", emails);
     const folders = sections.find((s) => s.id === "folders");
     expect(folders?.rows.some((r) => r.type === "folder" && r.folder === "spam")).toBe(true);
+
+    const allAttempt = buildPaletteModel(ctxOf(), "all", emails);
+    const allFolders = allAttempt.find((s) => s.id === "folders")?.rows ?? [];
+    expect(allFolders.some((r) => r.type === "folder" && r.folder === "all")).toBe(false);
   });
 
   it("fuzzy-finds senders", () => {
@@ -240,12 +264,55 @@ describe("buildPaletteModel", () => {
     expect(senders?.rows.some((r) => r.type === "sender")).toBe(true);
   });
 
-  it("fuzzy-finds settings by label or keywords", () => {
-    const sections = buildPaletteModel(ctxOf(), "theme", emails);
-    const settings = sections.find((s) => s.id === "settings");
-    expect(settings?.rows.some((r) => r.type === "setting" && r.setting.id === "appearance")).toBe(
-      true,
+  it("fuzzy-finds proofs by proof hash, subject, or sender", () => {
+    const sections = buildPaletteModel(ctxOf(), "Design Sync", emails);
+    const proofs = sections.find((s) => s.id === "proofs");
+    expect(proofs).toBeDefined();
+    expect(
+      proofs?.rows.some((r) => r.type === "proof" && r.email.id === "1" && Boolean(r.proof)),
+    ).toBe(true);
+  });
+
+  it("fuzzy-finds settings by label or keywords across SETTINGS_SHORTCUTS", () => {
+    expect(SETTINGS_SHORTCUTS.length).toBeGreaterThanOrEqual(4);
+    for (const shortcut of SETTINGS_SHORTCUTS) {
+      const byLabel = buildPaletteModel(ctxOf(), shortcut.label, emails);
+      const labelSettings = byLabel.find((s) => s.id === "settings")?.rows ?? [];
+      expect(labelSettings.some((r) => r.type === "setting" && r.setting.id === shortcut.id)).toBe(
+        true,
+      );
+
+      const byKeyword = buildPaletteModel(ctxOf(), shortcut.keywords[0], emails);
+      const kwSettings = byKeyword.find((s) => s.id === "settings")?.rows ?? [];
+      expect(kwSettings.some((r) => r.type === "setting" && r.setting.id === shortcut.id)).toBe(
+        true,
+      );
+    }
+  });
+
+  it("enforces per-section caps (8 commands, 5 folders, 5 senders, 4 proofs, 5 settings)", () => {
+    const manyEmails = Array.from({ length: 10 }, (_, idx) =>
+      email({
+        id: `m-${idx}`,
+        from: `Sender ${idx} e`,
+        email: `sender${idx}*example.com`,
+        subject: `Subject ${idx} e`,
+      }),
     );
+    // Query "e" matches >8 commands, >5 folders, all 10 unique senders, and all 10 proofs
+    const sections = buildPaletteModel(ctxOf({ email: manyEmails[0] }), "e", manyEmails);
+    const commandsSection = sections.find((s) => s.id === "commands");
+    const foldersSection = sections.find((s) => s.id === "folders");
+    const sendersSection = sections.find((s) => s.id === "senders");
+    const proofsSection = sections.find((s) => s.id === "proofs");
+    const settingsSection = sections.find((s) => s.id === "settings");
+
+    expect(commandsSection?.rows.length).toBeLessThanOrEqual(8);
+    expect(commandsSection?.rows.length).toBe(8);
+    expect(foldersSection?.rows.length).toBeLessThanOrEqual(5);
+    expect(sendersSection?.rows.length).toBe(5);
+    expect(proofsSection?.rows.length).toBe(4);
+    expect(settingsSection?.rows.length).toBeLessThanOrEqual(5);
   });
 
   it("filters out duplicate senders by email address", () => {
@@ -273,11 +340,16 @@ describe("buildPaletteModel", () => {
     expect(hasDisabled).toBe(false);
   });
 
-  it("includes all other active rows in selectableRows", () => {
-    const sections = buildPaletteModel(ctxOf({ email: emails[0] }), "lina", emails);
+  it("includes all non-command rows and enabled commands in selectableRows", () => {
+    const sections = buildPaletteModel(ctxOf({ email: emails[0] }), "e", emails);
     const selectable = selectableRows(sections);
-    // Should have both command and sender rows if they match.
     expect(selectable.length).toBeGreaterThan(0);
+    expect(selectable.some((r) => r.type === "command" && r.command.availability.enabled)).toBe(
+      true,
+    );
+    expect(selectable.some((r) => r.type === "folder")).toBe(true);
     expect(selectable.some((r) => r.type === "sender")).toBe(true);
+    expect(selectable.some((r) => r.type === "proof")).toBe(true);
+    expect(selectable.some((r) => r.type === "setting")).toBe(true);
   });
 });
