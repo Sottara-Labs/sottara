@@ -123,4 +123,82 @@ describe("BETA-005: Notification Audit Trail", () => {
     expect(alphaEvents).toHaveLength(1);
     expect(alphaEvents[0].safeTargetReference).toBe("target_target_alpha");
   });
+
+  it("reports droppedEvents > 0 when the buffer capacity is exceeded", async () => {
+    const smallTrail = new NotificationAuditTrail(2);
+    await smallTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 10,
+    });
+    await smallTrail.recordEvent({
+      eventType: "delivery.succeeded",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 20,
+    });
+    await smallTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_2",
+      durationMs: 30,
+    });
+
+    expect(smallTrail.droppedEventsCount).toBe(1);
+    const summary = await smallTrail.getSummary();
+    expect(summary.droppedEvents).toBe(1);
+    expect(summary.totalEvents).toBe(3);
+    expect(summary.verifiedChainIntegrity).toBe(true);
+  });
+
+  it("fails verification when a middle event is removed from the chain", async () => {
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 10,
+    });
+    await auditTrail.recordEvent({
+      eventType: "delivery.succeeded",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 20,
+    });
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_2",
+      durationMs: 30,
+    });
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(true);
+
+    // Remove the middle event (index 1)
+    (auditTrail as any).events.splice(1, 1);
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(false);
+  });
+
+  it("fails verification when genesis continuity is broken", async () => {
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 10,
+    });
+    await auditTrail.recordEvent({
+      eventType: "delivery.succeeded",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 20,
+    });
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(true);
+
+    // Corrupt genesis previousHash
+    (auditTrail as any).events[0].previousHash = "CORRUPTED_GENESIS_PREVIOUS_HASH";
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(false);
+  });
 });
