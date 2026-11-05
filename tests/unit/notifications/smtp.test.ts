@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { VerificationEmailMessage } from "../../../src/services/notifications/adapter";
+import { mailboxAddressSchema } from "../../../src/config/schema";
 import {
   SmtpError,
   SmtpNotificationAdapter,
@@ -210,5 +211,61 @@ describe("BETA-005: SmtpNotificationAdapter (scripted conversations)", () => {
       name: "SmtpError",
       command: "connect",
     });
+  });
+
+  it("rejects an address containing CRLF before DATA is entered and prevents Bcc injection", async () => {
+    const server = new ScriptedSmtpServer("220 smtp.test ESMTP ready\r\n", fullConversation);
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      socketFactory: async () => server,
+    });
+
+    const injectedMessage: VerificationEmailMessage = {
+      to: "alice@stealth.mail\r\nBcc: victim@example.com",
+      purpose: "email_verification",
+      verificationUrl: "https://stealth.mail/verify?token=tok",
+      expiresAt: new Date("2026-02-01T00:00:00.000Z"),
+    };
+
+    await expect(adapter.deliverVerificationEmail(injectedMessage)).rejects.toMatchObject({
+      name: "SmtpError",
+      command: "RCPT TO",
+      message: expect.stringContaining("prohibited characters"),
+    });
+
+    const fullWritten = server.written.join("");
+    // Ensure DATA was never entered
+    expect(fullWritten).not.toContain("DATA");
+    // Ensure no injected Bcc header ever reached the socket
+    expect(fullWritten).not.toContain("Bcc:");
+    expect(fullWritten).not.toContain("victim@example.com");
+  });
+
+  it("rejects a fromAddress containing angle brackets or CRLF", async () => {
+    const server = new ScriptedSmtpServer("220 smtp.test ESMTP ready\r\n", fullConversation);
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      fromAddress: "no-reply@stealth.mail> injected",
+      socketFactory: async () => server,
+    });
+
+    await expect(adapter.deliverVerificationEmail(message)).rejects.toMatchObject({
+      name: "SmtpError",
+      command: "MAIL FROM",
+      message: expect.stringContaining("prohibited characters"),
+    });
+
+    const fullWritten = server.written.join("");
+    expect(fullWritten).not.toContain("DATA");
+  });
+
+  it("config validation rejects fromAddress with control characters or invalid grammar", () => {
+    expect(() => mailboxAddressSchema.parse("no-reply@stealth.mail\r\n")).toThrow();
+    expect(() => mailboxAddressSchema.parse("no-reply@stealth.mail\n")).toThrow();
+    expect(() => mailboxAddressSchema.parse("no-reply@stealth.mail\0")).toThrow();
+    expect(() => mailboxAddressSchema.parse("no-reply<attacker>@stealth.mail")).toThrow();
+    expect(() => mailboxAddressSchema.parse("invalid-no-at-sign")).toThrow();
+    expect(mailboxAddressSchema.parse("no-reply@stealth.mail")).toBe("no-reply@stealth.mail");
+    expect(mailboxAddressSchema.parse("noreply@localhost")).toBe("noreply@localhost");
   });
 });
