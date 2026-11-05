@@ -9,6 +9,7 @@ import {
   shouldRetainSendCallback,
 } from "./delivery-status";
 import { recipientDomain, redactNotificationText } from "./redaction";
+import { SmtpError } from "./smtp";
 
 /**
  * BETA-091: In-process verification-mail queue with exponential backoff and DLQ.
@@ -294,18 +295,42 @@ export class VerificationMailQueue {
   }
 
   private handleFailure(record: DeliveryRecord, error: unknown): DeliveryRecord {
+    if (error instanceof SmtpError && typeof error.replyCode === "number") {
+      const classified = classifySmtpReplyCode(error.replyCode);
+      const errorLabel = `smtp_${error.replyCode}`;
+      if (!classified.retryable) {
+        return this.deadLetter(
+          record.messageId,
+          classified.state,
+          classified.reasonClass,
+          errorLabel,
+        );
+      }
+      return this.scheduleRetry(
+        record.messageId,
+        classified.state,
+        classified.reasonClass,
+        errorLabel,
+      );
+    }
+
     const redacted = redactNotificationText(error);
     const lower = redacted.toLowerCase();
     if (lower.includes("rate") || lower.includes("429")) {
-      return this.scheduleRetry(record.messageId, "deferred", "rate_limited", redacted);
+      return this.scheduleRetry(record.messageId, "deferred", "rate_limited", "rate_limited");
     }
     if (lower.includes("timeout") || lower.includes("econn") || lower.includes("network")) {
-      return this.scheduleRetry(record.messageId, "deferred", "transient_network", redacted);
+      return this.scheduleRetry(
+        record.messageId,
+        "deferred",
+        "transient_network",
+        "transient_network",
+      );
     }
     if (record.attempts >= record.maxAttempts) {
-      return this.deadLetter(record.messageId, "failed", "unknown", redacted);
+      return this.deadLetter(record.messageId, "failed", "unknown", "unknown");
     }
-    return this.scheduleRetry(record.messageId, "deferred", "transient_network", redacted);
+    return this.scheduleRetry(record.messageId, "deferred", "unknown", "unknown");
   }
 
   private scheduleRetry(
