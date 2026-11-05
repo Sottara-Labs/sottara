@@ -245,8 +245,7 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const killSwitchDefaults: Record<string, "open" | "closed"> = {};
   for (const capability of BETA_CAPABILITIES) {
     const override = env[`STEALTH_BETA_KILLSWITCH_${capability.toUpperCase()}`] as
-      | string
-      | undefined;
+      string | undefined;
     if (override === "open" || override === "closed") {
       killSwitchDefaults[capability] = override;
     } else {
@@ -334,6 +333,17 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
     if (allowedOrigins.length === 0 || allowedOrigins.includes("*")) {
       throw new Error(
         "Configuration error: STEALTH_CORS_ALLOWED_ORIGINS must contain explicit origin URLs in production.",
+      );
+    }
+    const hasDevDefaults = allowedOrigins.some(
+      (origin) =>
+        origin.includes("localhost") ||
+        origin.includes("127.0.0.1") ||
+        origin === "http://localhost:3000",
+    );
+    if (hasDevDefaults) {
+      throw new Error(
+        "Configuration error: STEALTH_CORS_ALLOWED_ORIGINS cannot contain localhost or development origins in production.",
       );
     }
   }
