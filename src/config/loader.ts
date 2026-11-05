@@ -273,6 +273,16 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
         "Configuration error: STEALTH_SMTP_PASSWORD is required for web/all roles in production.",
       );
     }
+    if (
+      notificationTransport === "smtp" &&
+      (smtpUsername || smtpPassword) &&
+      !smtpSecure &&
+      !smtpStartTls
+    ) {
+      throw new Error(
+        "Configuration error: SMTP authentication requires TLS (secure or startTls) in production.",
+      );
+    }
     if ((role === "all" || role === "relay") && isPlaceholderSecret(relayApiKey)) {
       throw new Error(
         "Configuration error: STEALTH_RELAY_API_KEY is required for relay/all roles in production.",

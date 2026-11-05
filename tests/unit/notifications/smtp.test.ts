@@ -211,4 +211,29 @@ describe("BETA-005: SmtpNotificationAdapter (scripted conversations)", () => {
       command: "connect",
     });
   });
+
+  it("refuses to send AUTH over an unencrypted connection when startTls is false and secure is false", async () => {
+    const server = new ScriptedSmtpServer("220 smtp.test ESMTP ready\r\n", (line) => {
+      if (line === "EHLO stealth.mail") return "250-AUTH PLAIN\r\n250 Ok\r\n";
+      return fullConversation(line);
+    });
+
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      secure: false,
+      startTls: false,
+      username: "smtp-user",
+      password: "smtp-pass",
+      socketFactory: async () => server,
+    });
+
+    await expect(adapter.deliverVerificationEmail(message)).rejects.toMatchObject({
+      name: "SmtpError",
+      command: "AUTH",
+    });
+
+    // Acceptance criterion: A scripted plaintext socket never receives AUTH.
+    const authCommands = server.written.filter((chunk) => chunk.startsWith("AUTH"));
+    expect(authCommands).toHaveLength(0);
+  });
 });
