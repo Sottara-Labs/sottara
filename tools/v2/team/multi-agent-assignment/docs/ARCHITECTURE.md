@@ -15,7 +15,7 @@ This document details the architectural decisions, data models, and logic workfl
 
 ## 1. Domain Data Models
 
-We define four primary interfaces in [types/index.ts](file:///home/henry/projects/open-source/stealth/tools/v2/team/multi-agent-assignment/types/index.ts):
+We define four primary interfaces in [types/index.ts](../types/index.ts):
 
 ### `Agent`
 
