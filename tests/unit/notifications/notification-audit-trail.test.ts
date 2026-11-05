@@ -123,4 +123,58 @@ describe("BETA-005: Notification Audit Trail", () => {
     expect(alphaEvents).toHaveLength(1);
     expect(alphaEvents[0].safeTargetReference).toBe("target_target_alpha");
   });
+
+  describe("BETA-084 / Issue #524: Cryptographic SHA-256 requirement and removal of fallback", () => {
+    it("produces standard 64-hex SHA-256 digests and never produces hash_ prefix", async () => {
+      const event = await auditTrail.recordEvent({
+        eventType: "delivery.succeeded",
+        transport: "smtp",
+        safeTargetReference: "ref_sha256_check",
+        durationMs: 15,
+      });
+
+      expect(event.recordHash).toMatch(/^[a-f0-9]{64}$/);
+      expect(event.recordHash).not.toMatch(/^hash_/);
+    });
+
+    it("refuses to record and fails closed when crypto.subtle is absent", async () => {
+      const originalSubtle = globalThis.crypto.subtle;
+      try {
+        // Temporarily undefine crypto.subtle
+        Object.defineProperty(globalThis.crypto, "subtle", {
+          value: undefined,
+          configurable: true,
+        });
+
+        await expect(
+          auditTrail.recordEvent({
+            eventType: "delivery.dispatched",
+            transport: "smtp",
+            safeTargetReference: "ref_fail_closed",
+            durationMs: 10,
+          }),
+        ).rejects.toThrowError(/WebCrypto \(crypto\.subtle\) is required/);
+      } finally {
+        Object.defineProperty(globalThis.crypto, "subtle", {
+          value: originalSubtle,
+          configurable: true,
+        });
+      }
+    });
+
+    it("verifyChainIntegrity rejects legacy hash_-prefixed record hashes", async () => {
+      await auditTrail.recordEvent({
+        eventType: "delivery.dispatched",
+        transport: "smtp",
+        safeTargetReference: "ref_tamper_prefix",
+        durationMs: 20,
+      });
+
+      // Inject legacy FNV-1a hash format
+      (auditTrail as any).events[0].recordHash = "hash_811c9dc5";
+
+      const valid = await auditTrail.verifyChainIntegrity();
+      expect(valid).toBe(false);
+    });
+  });
 });

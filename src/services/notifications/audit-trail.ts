@@ -131,6 +131,10 @@ export class NotificationAuditTrail {
         meta: event.metadata ?? {},
       });
 
+      if (!/^[a-f0-9]{64}$/.test(event.recordHash)) {
+        return false;
+      }
+
       const recomputedHash = await computeSha256Digest(payloadToHash);
       if (recomputedHash !== event.recordHash) {
         return false;
@@ -191,24 +195,21 @@ export class NotificationAuditTrail {
 }
 
 /**
- * Computes a standard SHA-256 digest hex string.
+ * Computes a standard SHA-256 digest hex string using WebCrypto.
+ * Fails closed with an explicit error when WebCrypto is unavailable.
  */
-async function computeSha256Digest(input: string): Promise<string> {
-  if (typeof crypto !== "undefined" && crypto.subtle) {
-    const data = new TextEncoder().encode(input);
-    const buffer = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(buffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+export async function computeSha256Digest(input: string): Promise<string> {
+  if (typeof crypto === "undefined" || !crypto.subtle) {
+    throw new Error(
+      "Cryptographic failure: WebCrypto (crypto.subtle) is required for audit trail hashing but is unavailable",
+    );
   }
 
-  // Fallback FNV-1a / polynomial hash for pure JS test runs
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `hash_${(h >>> 0).toString(16).padStart(8, "0")}`;
+  const data = new TextEncoder().encode(input);
+  const buffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export const globalNotificationAuditTrail = new NotificationAuditTrail();
