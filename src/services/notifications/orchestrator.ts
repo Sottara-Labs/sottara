@@ -8,7 +8,7 @@ import {
 } from "./queue";
 import { SinkNotificationAdapter } from "./sink";
 import { redactNotificationText } from "./redaction";
-import { classifySmtpReplyCode } from "./delivery-status";
+import { classifySmtpReplyCode, type DeliveryReasonClass } from "./delivery-status";
 
 function buildBaseAdapter(
   config: NotificationsConfig,
@@ -175,9 +175,11 @@ export function createOrchestratedNotificationAdapter(
 }
 
 /** Map an SMTP failure into a safe reason class for audit logs. */
-export function safeDeliveryFailureClass(error: unknown): string {
+export function safeDeliveryFailureClass(error: unknown): DeliveryReasonClass {
   if (error instanceof SmtpError && typeof error.replyCode === "number") {
     return classifySmtpReplyCode(error.replyCode).reasonClass;
   }
-  return redactNotificationText(error).slice(0, 80) || "unknown";
+  // For non-SMTP errors, log the redacted message if diagnostics are needed, not the typed field
+  void redactNotificationText(error);
+  return "unknown";
 }

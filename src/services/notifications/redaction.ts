@@ -19,6 +19,7 @@ export function recipientDomain(email: string): string {
 
 /** Scrubs secrets and verification URLs from free-form log/error text. */
 export function redactNotificationText(input: unknown): string {
+  if (input == null) return "";
   let message =
     input instanceof Error
       ? input.message
@@ -26,7 +27,7 @@ export function redactNotificationText(input: unknown): string {
         ? input
         : (() => {
             try {
-              return JSON.stringify(input);
+              return JSON.stringify(input) ?? String(input);
             } catch {
               return String(input);
             }
