@@ -198,7 +198,7 @@ export class VerificationMailQueue {
     if (!record) {
       throw new Error(`Unknown verification-mail messageId`);
     }
-    if (isTerminalDeliveryState(record.state) && record.state !== "failed") {
+    if (isTerminalDeliveryState(record.state)) {
       this.purgeSendCallback(messageId);
       return { ...record };
     }
@@ -281,6 +281,37 @@ export class VerificationMailQueue {
     return updated;
   }
 
+  /**
+   * Requeues a previously failed or dead-lettered message, resetting its
+   * attempt counter and scheduling it for immediate processing.
+   */
+  requeue(messageId: string, sendOverride?: QueuedSendFn): DeliveryRecord {
+    const record = this.records.get(messageId);
+    if (!record) {
+      throw new Error(`Unknown verification-mail messageId: ${messageId}`);
+    }
+
+    record.state = "queued";
+    record.attempts = 0;
+    record.reasonClass = "unknown";
+    record.nextAttemptAt = this.now().toISOString();
+    record.updatedAt = this.now().toISOString();
+    delete record.deadLetteredAt;
+    delete record.lastErrorClass;
+
+    if (sendOverride) {
+      this.sendFns.set(messageId, sendOverride);
+    }
+
+    // Remove from DLQ if present
+    const existingIdx = this.deadLetters.findIndex((dl) => dl.messageId === messageId);
+    if (existingIdx >= 0) {
+      this.deadLetters.splice(existingIdx, 1);
+    }
+
+    return { ...record };
+  }
+
   resetForTesting(): void {
     this.records.clear();
     this.deadLetters.length = 0;
@@ -341,7 +372,13 @@ export class VerificationMailQueue {
     record.deadLetteredAt = this.now().toISOString();
     record.updatedAt = record.deadLetteredAt;
     this.purgeSendCallback(messageId);
-    this.deadLetters.push({ ...record });
+
+    const existingIdx = this.deadLetters.findIndex((dl) => dl.messageId === messageId);
+    if (existingIdx >= 0) {
+      this.deadLetters[existingIdx] = { ...record };
+    } else {
+      this.deadLetters.push({ ...record });
+    }
     return { ...record };
   }
 
