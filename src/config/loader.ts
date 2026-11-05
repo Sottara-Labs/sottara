@@ -234,6 +234,9 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
     60 * 1000,
   );
   const verificationMaxAttempts = parseNumber(env.STEALTH_VERIFICATION_MAX_ATTEMPTS, 5);
+  const auditKeyId = (env.STEALTH_NOTIFICATION_AUDIT_KEY_ID as string) ?? "audit-key-v1";
+  const auditKeySecret =
+    (env.STEALTH_NOTIFICATION_AUDIT_KEY_SECRET as string) ?? "stealth-notification-audit-secret-v1";
 
   // 8. Beta controls (BETA-095). Kill switches default to the configured
   // baseline (`STEALTH_BETA_KILLSWITCH_DEFAULT`, default "open") so the stack
@@ -245,8 +248,7 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const killSwitchDefaults: Record<string, "open" | "closed"> = {};
   for (const capability of BETA_CAPABILITIES) {
     const override = env[`STEALTH_BETA_KILLSWITCH_${capability.toUpperCase()}`] as
-      | string
-      | undefined;
+      string | undefined;
     if (override === "open" || override === "closed") {
       killSwitchDefaults[capability] = override;
     } else {
@@ -406,6 +408,10 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
         username: smtpUsername,
         password: smtpPassword,
       },
+      auditKey: {
+        keyId: auditKeyId,
+        secret: auditKeySecret,
+      },
     },
     betaControl: {
       controlTtlSeconds,
@@ -461,6 +467,9 @@ export function getPublicConfig(config: BetaRuntimeConfig): PublicConfig {
         secure: config.notifications.smtp.secure,
         startTls: config.notifications.smtp.startTls,
       },
+      auditKey: {
+        keyId: config.notifications.auditKey.keyId,
+      },
     },
   };
 }
@@ -503,6 +512,10 @@ export function getRedactedConfig(config: BetaRuntimeConfig): Record<string, unk
         hasUsername: Boolean(config.notifications.smtp.username),
         username: config.notifications.smtp.username ? "[REDACTED]" : undefined,
         password: config.notifications.smtp.password ? "[REDACTED]" : undefined,
+      },
+      auditKey: {
+        keyId: config.notifications.auditKey.keyId,
+        secret: config.notifications.auditKey.secret ? "[REDACTED]" : undefined,
       },
     },
     secrets: {

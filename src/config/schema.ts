@@ -139,11 +139,24 @@ export const verificationPolicySchema = z.object({
 });
 export type VerificationPolicy = z.infer<typeof verificationPolicySchema>;
 
+export const notificationAuditKeySchema = z.object({
+  keyId: z.string().min(1, "Audit keyId cannot be empty").default("audit-key-v1"),
+  secret: z
+    .string()
+    .min(16, "Audit secret must have at least 16 characters")
+    .default("stealth-notification-audit-secret-v1"),
+});
+export type NotificationAuditKey = z.infer<typeof notificationAuditKeySchema>;
+
 export const notificationsConfigSchema = z.object({
   transport: notificationTransportSchema,
   fromAddress: z.string().min(1, "Notification from-address cannot be empty"),
   verification: verificationPolicySchema,
   smtp: smtpConfigSchema,
+  auditKey: notificationAuditKeySchema.default({
+    keyId: "audit-key-v1",
+    secret: "stealth-notification-audit-secret-v1",
+  }),
 });
 export type NotificationsConfig = z.infer<typeof notificationsConfigSchema>;
 
