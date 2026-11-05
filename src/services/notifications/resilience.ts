@@ -1,5 +1,6 @@
 import type { DeliveryReceipt, NotificationAdapter, VerificationEmailMessage } from "./adapter";
 import { globalNotificationAuditTrail } from "./audit-trail";
+import { recipientDomain } from "./redaction";
 
 /**
  * BETA-005 / BETA-091: Resilient Notification Delivery Engine.
@@ -103,9 +104,9 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 export interface DeadLetterEntry {
   readonly id: string;
   readonly messageSummary: {
-    to: string;
-    purpose: string;
-    safeTargetReference: string;
+    readonly recipientDomain: string;
+    readonly safeTargetReference: string;
+    readonly purpose: string;
   };
   readonly failedAttempts: number;
   readonly lastError: string;
@@ -190,9 +191,9 @@ export class ResilientNotificationDeliveryService implements NotificationAdapter
       this.dlq.enqueue({
         id: `dlq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         messageSummary: {
-          to: message.to,
-          purpose: message.purpose,
+          recipientDomain: recipientDomain(message.to),
           safeTargetReference: safeRef,
+          purpose: message.purpose,
         },
         failedAttempts: 1,
         lastError: `Circuit breaker is OPEN for transport ${this.transport}`,
@@ -263,9 +264,9 @@ export class ResilientNotificationDeliveryService implements NotificationAdapter
     this.dlq.enqueue({
       id: `dlq-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       messageSummary: {
-        to: message.to,
-        purpose: message.purpose,
+        recipientDomain: recipientDomain(message.to),
         safeTargetReference: safeRef,
+        purpose: message.purpose,
       },
       failedAttempts: attempt,
       lastError: lastError?.message ?? "Delivery failed after max retries",
@@ -292,13 +293,15 @@ export class ResilientNotificationDeliveryService implements NotificationAdapter
   }
 }
 
-async function computeSafeTargetReference(email: string): Promise<string> {
+export async function computeSafeTargetReference(email: string): Promise<string> {
+  const normalized = email.toLowerCase().trim();
   if (typeof crypto !== "undefined" && crypto.subtle) {
-    const data = new TextEncoder().encode(email.toLowerCase().trim());
+    const data = new TextEncoder().encode(normalized);
     const buf = await crypto.subtle.digest("SHA-256", data);
     return Array.from(new Uint8Array(buf))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
-  return `ref:${email.slice(0, 3)}***@domain`;
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(normalized).digest("hex");
 }
