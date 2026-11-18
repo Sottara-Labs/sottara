@@ -169,6 +169,18 @@ describe("BETA-001 :: Beta Runtime Configuration Contract", () => {
         }),
       ).toThrow(/STEALTH_CORS_ALLOWED_ORIGINS must contain explicit origin URLs/);
     });
+
+    it("fails production startup when STEALTH_SMTP_ALLOW_SELF_SIGNED is enabled", () => {
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "production",
+          env: {
+            ...baseProdEnv,
+            STEALTH_SMTP_ALLOW_SELF_SIGNED: "true",
+          },
+        }),
+      ).toThrow(/STEALTH_SMTP_ALLOW_SELF_SIGNED cannot be enabled in production/);
+    });
   });
 
   describe("Public/Secret Separation & Redaction Safety", () => {
