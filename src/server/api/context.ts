@@ -46,6 +46,7 @@ export interface TraceContext {
 }
 
 export const traceContextStorage = new AsyncLocalStorage<TraceContext>();
+export const requestEnvStorage = new AsyncLocalStorage<Record<string, unknown>>();
 
 function generateHexId(bytes: number): string {
   const array = new Uint8Array(bytes);
