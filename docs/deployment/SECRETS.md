@@ -6,16 +6,18 @@ This document defines the secrets inventory for the Hush Beta release, outlining
 
 Secrets are scoped to specific runtime identities via the `STEALTH_ROLE` environment variable to ensure jobs receive only their required capabilities.
 
-| Variable Name             | Description                                                                           | Role Scope                   |
-| ------------------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
-| `STEALTH_CURSOR_SECRET`   | Used to sign/verify cursor tokens for pagination and session states.                  | `web`, `all`                 |
-| `STEALTH_RELAY_API_KEY`   | Authenticates connections from the Web application to the SMTP Relay service.         | `relay`, `all`               |
-| `STEALTH_STORAGE_SECRET`  | API Secret or Access Token to interact with external/bound Object Storage or DBs.     | `indexer`, `all`             |
-| `STEALTH_SMTP_PASSWORD`   | Credentials to authenticate the system against the outbound SMTP provider.            | `web`, `all`                 |
-| `STEALTH_RPC_API_KEY`     | Token for making authenticated calls against the Soroban RPC.                         | `operator`, `indexer`, `all` |
-| `STEALTH_OPERATOR_SECRET` | Custody secret key for the operator wallet to broadcast signed network transactions.  | `operator`, `all`            |
-| `STEALTH_BACKUP_KEY`      | Base64-encoded 32-byte key sealing encrypted backups (AES-256-GCM, BETA-081).         | `operator`, `all`            |
-| `STEALTH_ADMIN_ADDRESSES` | Comma-separated Stellar G-addresses allowed to call `/api/v1/admin/*` (not a secret). | `operator`, `all`            |
+| Variable Name                           | Description                                                                             | Role Scope                   |
+| --------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------- |
+| `STEALTH_CURSOR_SECRET`                 | Used to sign/verify cursor tokens for pagination and session states.                    | `web`, `all`                 |
+| `STEALTH_RELAY_API_KEY`                 | Authenticates connections from the Web application to the SMTP Relay service.           | `relay`, `all`               |
+| `STEALTH_STORAGE_SECRET`                | API Secret or Access Token to interact with external/bound Object Storage or DBs.       | `indexer`, `all`             |
+| `STEALTH_SMTP_PASSWORD`                 | Credentials to authenticate the system against the outbound SMTP provider.              | `web`, `all`                 |
+| `STEALTH_RPC_API_KEY`                   | Token for making authenticated calls against the Soroban RPC.                           | `operator`, `indexer`, `all` |
+| `STEALTH_OPERATOR_SECRET`               | Custody secret key for the operator wallet to broadcast signed network transactions.    | `operator`, `all`            |
+| `STEALTH_BACKUP_KEY`                    | Base64-encoded 32-byte key sealing encrypted backups (AES-256-GCM, BETA-081).           | `operator`, `all`            |
+| `STEALTH_NOTIFICATION_AUDIT_KEY_SECRET` | Secret key used to generate HMAC-SHA256 signatures for delivery audit trail (BETA-005). | `web`, `all`                 |
+| `STEALTH_NOTIFICATION_AUDIT_KEY_ID`     | Identifier associated with the active audit HMAC key (not secret).                      | `web`, `all`                 |
+| `STEALTH_ADMIN_ADDRESSES`               | Comma-separated Stellar G-addresses allowed to call `/api/v1/admin/*` (not a secret).   | `operator`, `all`            |
 
 ## Environment Ownership
 
@@ -28,7 +30,7 @@ All production secrets must be provisioned and managed strictly through the desi
 
 ## Rotation Cadence
 
-1. **Standard Rotation**: Secrets (Cursor, Storage, Relay, RPC, and SMTP) must be rotated on a **90-day** cadence. `STEALTH_BACKUP_KEY` follows the same cadence; retain prior backup keys until every archive sealed under them passes retention.
+1. **Standard Rotation**: Secrets (Cursor, Storage, Relay, RPC, and SMTP) must be rotated on a **90-day** cadence. `STEALTH_BACKUP_KEY` and `STEALTH_NOTIFICATION_AUDIT_KEY_SECRET` follow the same cadence; retain prior backup and audit keys until every archive sealed or log entry recorded under them passes retention.
 2. **Wallet/Operator Rotation**: Operator keys should follow the same 90-day cadence. The application supports updating credentials without breaking user wallet encryption.
 3. **Automated Audits**: Ensure a scheduled check verifies that secrets are up-to-date and have not leaked in scanning pipelines.
 

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { NotificationAuditTrail } from "../../../src/services/notifications/audit-trail";
+import {
+  NotificationAuditTrail,
+  DEFAULT_AUDIT_KEY_CONFIG,
+} from "../../../src/services/notifications/audit-trail";
 
 describe("BETA-005: Notification Audit Trail", () => {
   let auditTrail: NotificationAuditTrail;
@@ -9,7 +12,7 @@ describe("BETA-005: Notification Audit Trail", () => {
     auditTrail.clear();
   });
 
-  it("records delivery events with increasing sequence IDs and valid timestamps", async () => {
+  it("records delivery events with increasing sequence IDs, valid timestamps, and keyId", async () => {
     const event = await auditTrail.recordEvent({
       eventType: "delivery.dispatched",
       transport: "smtp",
@@ -24,6 +27,7 @@ describe("BETA-005: Notification Audit Trail", () => {
     expect(event.safeTargetReference).toBe("hash_alice_123");
     expect(event.durationMs).toBe(45);
     expect(event.recordHash).toBeDefined();
+    expect(event.keyId).toBe(DEFAULT_AUDIT_KEY_CONFIG.keyId);
     expect(event.previousHash).toContain("GENESIS_AUDIT_BLOCK");
   });
 
@@ -70,6 +74,101 @@ describe("BETA-005: Notification Audit Trail", () => {
 
     const isValid = await auditTrail.verifyChainIntegrity();
     expect(isValid).toBe(false);
+  });
+
+  it("fails verification when an event is edited and recomputed with unkeyed SHA-256", async () => {
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 10,
+    });
+    await auditTrail.recordEvent({
+      eventType: "delivery.succeeded",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 20,
+    });
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(true);
+
+    // Tamper with first event durationMs and recompute recordHash with plain unkeyed SHA-256
+    const tamperedEvent = (auditTrail as any).events[0];
+    tamperedEvent.durationMs = 9999;
+    const payloadToHash = JSON.stringify({
+      sequence: tamperedEvent.sequenceId,
+      eventType: tamperedEvent.eventType,
+      transport: tamperedEvent.transport,
+      target: tamperedEvent.safeTargetReference,
+      ref: tamperedEvent.providerRef ?? "",
+      msgId: tamperedEvent.messageId ?? "",
+      duration: tamperedEvent.durationMs,
+      ts: tamperedEvent.timestamp,
+      prev: tamperedEvent.previousHash,
+      keyId: tamperedEvent.keyId,
+      meta: tamperedEvent.metadata ?? {},
+    });
+
+    const { createHash } = await import("node:crypto");
+    tamperedEvent.recordHash = createHash("sha256").update(payloadToHash).digest("hex");
+
+    // Also update second event previousHash to point to new hash
+    (auditTrail as any).events[1].previousHash = tamperedEvent.recordHash;
+
+    const isValid = await auditTrail.verifyChainIntegrity();
+    expect(isValid).toBe(false);
+  });
+
+  it("fails verification when verified with the wrong key", async () => {
+    await auditTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_1",
+      durationMs: 10,
+    });
+
+    expect(await auditTrail.verifyChainIntegrity()).toBe(true);
+
+    const wrongSecretResult = await auditTrail.verifyChainIntegrity({
+      keyId: "audit-key-v1",
+      secret: "wrong-secret-key-that-does-not-match",
+    });
+    expect(wrongSecretResult).toBe(false);
+
+    const wrongKeyIdResult = await auditTrail.verifyChainIntegrity({
+      keyId: "different-key-id",
+      secret: "stealth-notification-audit-secret-v1",
+    });
+    expect(wrongKeyIdResult).toBe(false);
+  });
+
+  it("supports key configuration and rotation", async () => {
+    const rotatedTrail = new NotificationAuditTrail(50, {
+      keyId: "audit-key-v2-2026-q4",
+      secret: "custom-rotated-secret-key-32-bytes!!",
+    });
+
+    const event = await rotatedTrail.recordEvent({
+      eventType: "delivery.dispatched",
+      transport: "smtp",
+      safeTargetReference: "ref_rotated",
+      durationMs: 15,
+    });
+
+    expect(event.keyId).toBe("audit-key-v2-2026-q4");
+    expect(await rotatedTrail.verifyChainIntegrity()).toBe(true);
+    expect(
+      await rotatedTrail.verifyChainIntegrity({
+        keyId: "audit-key-v2-2026-q4",
+        secret: "custom-rotated-secret-key-32-bytes!!",
+      }),
+    ).toBe(true);
+    expect(
+      await rotatedTrail.verifyChainIntegrity({
+        keyId: "audit-key-v1",
+        secret: "custom-rotated-secret-key-32-bytes!!",
+      }),
+    ).toBe(false);
   });
 
   it("produces accurate statistical summaries", async () => {

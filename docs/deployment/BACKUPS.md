@@ -54,6 +54,11 @@ Guarantees (verified by `tests/unit/backup/*`):
   inventory in `SECRETS.md`). Rotation creates a new `keyId` in future archives;
   past archives remain decryptable under their original key, so retain prior
   keys until all archives sealed under them reach end of retention.
+- **Notification Audit Key Rotation (BETA-005)**: Alongside `STEALTH_BACKUP_KEY`,
+  the notification delivery audit HMAC secret (`STEALTH_NOTIFICATION_AUDIT_KEY_SECRET`)
+  and identifier (`STEALTH_NOTIFICATION_AUDIT_KEY_ID`) follow the same **90-day cadence**.
+  Each audit entry records the signing `keyId`. Prior audit keys are retained
+  so historical audit trails remain verifiable against retrospective tampering.
 - Access to `STEALTH_BACKUP_KEY` and to archive files is restricted to the
   operator role. No plaintext credentials or backup values ever appear in
   repository files, client bundles, or CI logs.
