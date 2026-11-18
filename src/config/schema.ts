@@ -56,10 +56,16 @@ export const sessionConfigSchema = z.object({
   authChallengeLifetimeMs: z
     .number()
     .int()
-    .positive("Auth challenge lifetime must be a positive integer"),
-  authClockSkewMs: z.number().int().nonnegative("Auth clock skew must be a non-negative integer"),
-  authNonceTtlMs: z.number().int().positive("Auth nonce TTL must be a positive integer"),
-  quoteLifetimeMs: z.number().int().positive("Quote lifetime must be a positive integer"),
+    .min(60000, "Auth challenge lifetime must be at least 60 seconds (60000 ms)"),
+  authClockSkewMs: z.number().int().min(0, "Auth clock skew must be a non-negative integer"),
+  authNonceTtlMs: z
+    .number()
+    .int()
+    .min(60000, "Auth nonce TTL must be at least 60 seconds (60000 ms)"),
+  quoteLifetimeMs: z
+    .number()
+    .int()
+    .min(60000, "Quote lifetime must be at least 60 seconds (60000 ms)"),
 });
 export type SessionConfig = z.infer<typeof sessionConfigSchema>;
 
@@ -68,7 +74,7 @@ export type SessionConfig = z.infer<typeof sessionConfigSchema>;
  */
 export const relayConfigSchema = z.object({
   relayUrl: z.string().url("Relay URL must be a valid HTTP(S) URL"),
-  relayTimeoutMs: z.number().int().positive("Relay timeout must be a positive integer"),
+  relayTimeoutMs: z.number().int().min(100, "Relay timeout must be at least 100 ms"),
 });
 export type RelayConfig = z.infer<typeof relayConfigSchema>;
 
@@ -130,12 +136,12 @@ export const verificationPolicySchema = z.object({
   tokenLifetimeMs: z
     .number()
     .int()
-    .positive("Verification token lifetime must be a positive integer"),
+    .min(60000, "Verification token lifetime must be at least 60 seconds (60000 ms)"),
   resendCooldownMs: z
     .number()
     .int()
     .positive("Verification resend cooldown must be a positive integer"),
-  maxAttempts: z.number().int().positive("Verification max attempts must be a positive integer"),
+  maxAttempts: z.number().int().min(1, "Verification max attempts must be at least 1"),
 });
 export type VerificationPolicy = z.infer<typeof verificationPolicySchema>;
 
