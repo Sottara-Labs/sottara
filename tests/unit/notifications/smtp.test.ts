@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { VerificationEmailMessage } from "../../../src/services/notifications/adapter";
 import {
+  encodeSmtpDataPayload,
   SmtpError,
   SmtpNotificationAdapter,
   type SmtpSocketLike,
@@ -210,5 +211,55 @@ describe("BETA-005: SmtpNotificationAdapter (scripted conversations)", () => {
       name: "SmtpError",
       command: "connect",
     });
+  });
+
+  it("dot-stuffs lines starting with a period in encodeSmtpDataPayload", () => {
+    const headers = ["From: test@stealth.mail", "To: user@stealth.mail"];
+    const body = ["Hello world", ".", "..two dots", "normal line", ".starts with dot"];
+
+    const encoded = encodeSmtpDataPayload(headers, body);
+
+    // Header / body separator
+    expect(encoded).toContain("From: test@stealth.mail\r\nTo: user@stealth.mail\r\n\r\n");
+    // Dot-stuffed lines:
+    // A body line "." reaches the peer as ".."
+    expect(encoded).toContain("\r\n..\r\n");
+    expect(encoded).toContain("\r\n...two dots\r\n");
+    expect(encoded).toContain("\r\n..starts with dot\r\n");
+    // Exactly one DATA terminator at the end
+    expect(encoded.endsWith("\r\n.\r\n")).toBe(true);
+
+    // Only one standalone "." line in the entire payload (the final terminator)
+    const lines = encoded.split("\r\n");
+    const bareDotLines = lines.filter((l) => l === ".");
+    expect(bareDotLines).toHaveLength(1);
+  });
+
+  it("prevents SMTP command injection when verificationUrl contains CRLF and dot", async () => {
+    const server = new ScriptedSmtpServer("220 smtp.test ESMTP ready\r\n", fullConversation);
+    const adapter = new SmtpNotificationAdapter({
+      ...smtpOptions,
+      socketFactory: async () => server,
+    });
+
+    const maliciousMessage: VerificationEmailMessage = {
+      to: "alice@stealth.mail",
+      purpose: "email_verification",
+      verificationUrl:
+        "https://stealth.mail/verify?email=alice%40stealth.mail\r\n.QUIT\r\nMAIL FROM:<injected@evil.com>",
+      expiresAt: new Date("2026-02-01T00:00:00.000Z"),
+    };
+
+    const receipt = await adapter.deliverVerificationEmail(maliciousMessage);
+    expect(receipt.accepted).toBe(true);
+
+    const fullWritten = server.written.join("");
+    // Injected line .QUIT must be dot-stuffed to ..QUIT
+    expect(fullWritten).toContain("..QUIT");
+    // Ensure there is only one DATA terminator
+    const lines = fullWritten.split("\r\n");
+    const dataSection = lines.slice(lines.indexOf("DATA") + 1, lines.indexOf("QUIT"));
+    const bareDotLines = dataSection.filter((l) => l === ".");
+    expect(bareDotLines).toHaveLength(1);
   });
 });
