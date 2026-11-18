@@ -101,7 +101,7 @@ For headless execution independent of visual presentation, use `ProjectMailBinde
 
 - **Structured Results**: Returns `{ success: true, data: T }` or `{ success: false, error: BinderError }`.
 - **Structured Error Codes**: `INVALID_INPUT`, `PROJECT_NOT_FOUND`, `MAIL_NOT_FOUND`, `INVALID_STATE`, `DUPLICATE_PROJECT`, `RULE_EVALUATION_ERROR`, `UNHANDLED_ERROR`.
-- **Full Specification**: Detailed DTO contracts and headless integration examples are available in [EXECUTION_CONTRACT.md](file:///c:/Users/HR%20Gadget/Desktop/stellar/stealth/tools/v2/team/project-mail-binder/docs/EXECUTION_CONTRACT.md).
+- **Full Specification**: Detailed DTO contracts and headless integration examples are available in [EXECUTION_CONTRACT.md](docs/EXECUTION_CONTRACT.md).
 
 ### Folder Structure
 
