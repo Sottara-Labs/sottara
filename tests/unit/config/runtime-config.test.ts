@@ -169,6 +169,19 @@ describe("BETA-001 :: Beta Runtime Configuration Contract", () => {
         }),
       ).toThrow(/STEALTH_CORS_ALLOWED_ORIGINS must contain explicit origin URLs/);
     });
+
+    it("fails production startup when SMTP credentials are configured without TLS (startTls=false and secure=false)", () => {
+      expect(() =>
+        loadRuntimeConfig({
+          profile: "production",
+          env: {
+            ...baseProdEnv,
+            STEALTH_SMTP_STARTTLS: "false",
+            STEALTH_SMTP_SECURE: "false",
+          },
+        }),
+      ).toThrow(/SMTP authentication requires TLS \(secure or startTls\) in production/);
+    });
   });
 
   describe("Public/Secret Separation & Redaction Safety", () => {
