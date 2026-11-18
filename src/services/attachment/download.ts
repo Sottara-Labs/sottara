@@ -134,16 +134,18 @@ export async function downloadAttachment(
       chunk_index: String(i),
     });
 
-    const data = await fetchWithRetry(
+    const response = await fetchWithRetry(
       `${baseUrl}/download?${params}`,
       {
         headers: { "x-stealth-address": ownerAddress },
       },
       signal,
-    ).then((r) => r.json());
+    );
 
-    const chunkData = data.data;
-    const rawBytes = new Uint8Array(chunkData.chunk_data);
+    const contentType = response.headers.get("x-content-type");
+    const chunkIndexHeader = response.headers.get("x-chunk-index");
+    const rawBuffer = await response.arrayBuffer();
+    const rawBytes = new Uint8Array(rawBuffer);
 
     // Wire format: nonce (12 bytes) || ciphertext || mac (16 bytes)
     const NONCE_LEN = 12;

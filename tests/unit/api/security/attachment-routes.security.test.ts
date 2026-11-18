@@ -42,9 +42,11 @@ describe("BETA-084 (Issue #1991): Attachment Download Isolation", () => {
       }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.data.chunk_data).toEqual([7, 8, 9, 10]);
-    assertNoSecretsLeaked(body);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("content-length")).toBe("4");
+    expect(res.headers.get("x-chunk-index")).toBe("0");
+    const buffer = await res.arrayBuffer();
+    expect(Array.from(new Uint8Array(buffer))).toEqual([7, 8, 9, 10]);
   });
 
   it("denies Bob downloading Alice's attachment chunk", async () => {
