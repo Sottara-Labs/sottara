@@ -73,25 +73,52 @@ jobs:
       continue-on-error: true
     - name: Check release gate status
       id: check
-      run: "# Check if CI gates passed for this commit\n# Look for the release gate\
-        \ summary or individual gate results\nGATE_SUMMARY_EXISTS=false\nif [ -f \"\
-        gate-artifacts/release-gate-summary.json\" ]; then\n  GATE_SUMMARY_EXISTS=true\n\
-        \  VERDICT=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).verdict)\"\
-        )\n  RELEASABLE=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('gate-artifacts/release-gate-summary.json','utf8')).releasable)\"\
-        )\n  echo \"Release gate verdict: $VERDICT\"\n  echo \"Releasable: $RELEASABLE\"\
-        \n  \n  if [ \"$RELEASABLE\" = \"true\" ]; then\n    echo \"releasable=true\"\
-        \ >> $GITHUB_OUTPUT\n  else\n    echo \"releasable=false\" >> $GITHUB_OUTPUT\n\
-        \  fi\nelse\n  echo \"No release gate summary found — checking individual\
-        \ gates\"\n  \n  # Check for critical gate results\n  CRITICAL_GATES=(\"client-checks\"\
-        \ \"contract-checks\" \"beta-migrations\" \"beta-backup\" \"e2e\" \"provenance\"\
-        )\n  ALL_PASS=true\n  \n  for gate in \"${CRITICAL_GATES[@]}\"; do\n    GATE_FILE=\"\
-        gate-artifacts/gate-result-${gate}.json\"\n    if [ -f \"$GATE_FILE\" ]; then\n\
-        \      STATUS=$(node -e \"console.log(JSON.parse(require('fs').readFileSync('$GATE_FILE','utf8')).status)\"\
-        )\n      echo \"Gate $gate: $STATUS\"\n      if [ \"$STATUS\" != \"pass\"\
-        \ ]; then\n        ALL_PASS=false\n      fi\n    else\n      echo \"Gate $gate:\
-        \ MISSING\"\n      ALL_PASS=false\n    fi\n  done\n  \n  if [ \"$ALL_PASS\"\
-        \ = \"true\" ]; then\n    echo \"releasable=true\" >> $GITHUB_OUTPUT\n  else\n\
-        \    echo \"releasable=false\" >> $GITHUB_OUTPUT\n  fi\nfi\n"
+      run: |
+        # Fail closed: staging must never deploy without a release gate summary.
+        SUMMARY_FILE="gate-artifacts/release-gate-summary.json"
+        if [ ! -f "$SUMMARY_FILE" ]; then
+          echo "::error::release gate summary is unavailable; refusing to deploy to staging"
+          echo "releasable=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+        VERDICT=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).verdict)" "$SUMMARY_FILE")
+        RELEASABLE=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).releasable)" "$SUMMARY_FILE")
+        echo "Release gate verdict: $VERDICT"
+        echo "Releasable: $RELEASABLE"
+
+        if [ "$RELEASABLE" != "true" ]; then
+          echo "::error::release gate summary is not releasable; refusing to deploy to staging"
+          echo "releasable=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+        # Derive the critical set from the single source of truth instead of
+        # hand-maintaining a list that could silently omit a security gate.
+        CRITICAL_GATES=($(node -e "import('./scripts/ci/release-gate-lib.mjs').then((m) => console.log(m.REQUIRED_GATES.join(' ')))"))
+
+        ALL_PASS=true
+        for gate in "${CRITICAL_GATES[@]}"; do
+          GATE_FILE="gate-artifacts/gate-result-${gate}.json"
+          if [ -f "$GATE_FILE" ]; then
+            STATUS=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).status)" "$GATE_FILE")
+            echo "Gate $gate: $STATUS"
+            if [ "$STATUS" != "pass" ]; then
+              ALL_PASS=false
+            fi
+          else
+            echo "Gate $gate: MISSING"
+            ALL_PASS=false
+          fi
+        done
+
+        if [ "$ALL_PASS" != "true" ]; then
+          echo "::error::not every required release gate passed; refusing to deploy to staging"
+          echo "releasable=false" >> "$GITHUB_OUTPUT"
+          exit 1
+        fi
+
+        echo "releasable=true" >> "$GITHUB_OUTPUT"
   staging-deploy:
     name: Deploy to Staging
     runs-on: ubuntu-latest
