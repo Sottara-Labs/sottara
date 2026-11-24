@@ -49,6 +49,7 @@
     "ci:collect-hashes": "node scripts/ci/collect-artifact-hashes.mjs",
     "ci:scan-artifacts": "node scripts/ci/scan-artifacts-for-secrets.mjs",
     "ci:release-gate-summary": "node scripts/ci/release-gate-summary.mjs",
+    "ci:verify-gate-coverage": "node scripts/ci/verify-gate-coverage.mjs",
     "test:beta:auth": "vitest run tests/unit/api/auth",
     "test:beta:security": "vitest run tests/unit/crypto src/services/crypto/*.test.ts tests/unit/stellar/managed-wallet.test.ts tests/unit/api/security.regression.test.ts",
     "test:beta:security:live": "vitest run tests/e2e/live-beta/crypto-misuse-evidence.test.ts",
