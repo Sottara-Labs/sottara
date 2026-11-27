@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { VerificationEmailMessage } from "../../../src/services/notifications/adapter";
 import {
+  defaultSmtpSocketFactory,
   SmtpError,
   SmtpNotificationAdapter,
   type SmtpSocketLike,
@@ -210,5 +211,36 @@ describe("BETA-005: SmtpNotificationAdapter (scripted conversations)", () => {
       name: "SmtpError",
       command: "connect",
     });
+  });
+
+  it("verifies TLS certificates by default and rejects self-signed certificates unless allowSelfSigned is set", async () => {
+    // 1. Default: rejectUnauthorized must be true (not disabled)
+    const socket1 = (await defaultSmtpSocketFactory({
+      host: "smtp.example.org",
+      port: 465,
+      secure: true,
+    })) as any;
+    expect(socket1._rejectUnauthorized).toBe(true);
+    socket1.destroy();
+
+    // 2. Explicit allowSelfSigned: true sets rejectUnauthorized: false
+    const socket2 = (await defaultSmtpSocketFactory({
+      host: "smtp.example.org",
+      port: 465,
+      secure: true,
+      allowSelfSigned: true,
+    })) as any;
+    expect(socket2._rejectUnauthorized).toBe(false);
+    socket2.destroy();
+
+    // 3. Injectable test CA: keeps rejectUnauthorized: true
+    const socket3 = (await defaultSmtpSocketFactory({
+      host: "smtp.example.org",
+      port: 465,
+      secure: true,
+      ca: "test-ca-pem-certificate",
+    })) as any;
+    expect(socket3._rejectUnauthorized).toBe(true);
+    socket3.destroy();
   });
 });
