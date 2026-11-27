@@ -6,22 +6,108 @@ import { enforceRetention } from "./server/api/retention-service";
 import { applySecurityHeaders } from "./server/security/headers";
 import { processVerificationMailQueue } from "./services/notifications/worker";
 
+import { loadRuntimeConfig, type BetaRuntimeConfig } from "./config";
+
 export { StealthCoordinator } from "./server/api/stealth-coordinator";
+
+export function resolveAllowedHosts(config: BetaRuntimeConfig): Set<string> {
+  const allowed = new Set<string>();
+  try {
+    const canonical = new URL(config.origin.appUrl);
+    allowed.add(canonical.host.toLowerCase());
+    allowed.add(canonical.hostname.toLowerCase());
+  } catch {
+    allowed.add("app.betasmail.com");
+  }
+
+  for (const origin of config.origin.allowedOrigins) {
+    try {
+      const u = new URL(origin);
+      allowed.add(u.host.toLowerCase());
+      allowed.add(u.hostname.toLowerCase());
+    } catch {
+      // ignore malformed origin entries
+    }
+  }
+
+  // Canonical root domains supported for redirection
+  allowed.add("betasmail.com");
+  allowed.add("www.betasmail.com");
+
+  if (config.profile === "development" || config.profile === "test") {
+    allowed.add("localhost");
+    allowed.add("127.0.0.1");
+  }
+
+  return allowed;
+}
+
+export function isHostAllowed(hostHeader: string | null | undefined, config: BetaRuntimeConfig): boolean {
+  if (!hostHeader) return false;
+  const clean = hostHeader.trim().toLowerCase();
+  if (!clean) return false;
+  const hostname = clean.includes(":") ? clean.split(":")[0] : clean;
+  const allowed = resolveAllowedHosts(config);
+
+  if (allowed.has(clean) || allowed.has(hostname)) {
+    return true;
+  }
+
+  if ((config.profile === "development" || config.profile === "test") &&
+      (hostname === "localhost" || hostname === "127.0.0.1")) {
+    return true;
+  }
+
+  return false;
+}
+
+export function resolveFederationServerUrl(config: BetaRuntimeConfig): string {
+  if (config.profile === "preview") {
+    return config.origin.appUrl.includes("preview")
+      ? `${config.origin.appUrl.replace(/\/$/, "")}/api/v1/federation`
+      : "https://app-preview.betasmail.com/api/v1/federation";
+  }
+  return `${config.origin.appUrl.replace(/\/$/, "")}/api/v1/federation`;
+}
 
 export default {
   async fetch(...args: Parameters<typeof handler.fetch>) {
-    const [request] = args;
+    const [request, env] = args;
     const url = new URL(request.url);
     const host = request.headers.get("host") || url.host;
 
+    let config: BetaRuntimeConfig;
+    try {
+      config = loadRuntimeConfig(
+        env && typeof env === "object" ? { env: env as Record<string, string | undefined> } : undefined,
+      );
+    } catch {
+      config = loadRuntimeConfig({ profile: "development" });
+    }
+
+    // Reject requests whose Host is not in an explicit allowlist before routing
+    if (!isHostAllowed(host, config)) {
+      return applySecurityHeaders(
+        new Response("Invalid Host header", { status: 400 }),
+      );
+    }
+
+    let canonicalUrl: URL;
+    try {
+      canonicalUrl = new URL(config.origin.appUrl);
+    } catch {
+      canonicalUrl = new URL("https://app.betasmail.com");
+    }
+
     // 1. HTTP to HTTPS redirect in production-like envs (Cloudflare x-forwarded-proto)
     const proto = request.headers.get("x-forwarded-proto");
-    if (proto === "http" && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    const isDev = config.profile === "development" || config.profile === "test";
+    if (proto === "http" && !isDev) {
       return applySecurityHeaders(
         new Response(null, {
           status: 301,
           headers: {
-            Location: `https://${host}${url.pathname}${url.search}`,
+            Location: `${canonicalUrl.origin}${url.pathname}${url.search}`,
           },
         }),
       );
@@ -29,17 +115,7 @@ export default {
 
     // 2. Intercept and serve SEP-1 stellar.toml dynamically
     if (url.pathname === "/.well-known/stellar.toml") {
-      const isPreview = host.includes("preview") || host.includes("staging");
-      const isDev = host.includes("localhost") || host.includes("127.0.0.1");
-
-      let fedServer: string;
-      if (isDev) {
-        fedServer = `http://${host}/api/v1/federation`;
-      } else if (isPreview) {
-        fedServer = `https://app-preview.betasmail.com/api/v1/federation`;
-      } else {
-        fedServer = `https://app.betasmail.com/api/v1/federation`;
-      }
+      const fedServer = resolveFederationServerUrl(config);
 
       const tomlContent = [
         `# Stellar TOML Configuration for Hush Mail`,
@@ -58,12 +134,13 @@ export default {
     }
 
     // 3. Root domain redirect (betasmail.com -> app.betasmail.com)
-    if (host === "betasmail.com" || host === "www.betasmail.com") {
+    const hostname = host.includes(":") ? host.split(":")[0] : host;
+    if (hostname === "betasmail.com" || hostname === "www.betasmail.com") {
       return applySecurityHeaders(
         new Response(null, {
           status: 301,
           headers: {
-            Location: `https://app.betasmail.com${url.pathname}${url.search}`,
+            Location: `${canonicalUrl.origin}${url.pathname}${url.search}`,
           },
         }),
       );
