@@ -5,6 +5,8 @@
 
 export const REQUIRED_GATES = Object.freeze([
   "client-checks",
+  "build-reproducibility",
+  "pinned-versions",
   "contract-checks",
   "contract-registry",
   "beta-migrations",
@@ -14,9 +16,12 @@ export const REQUIRED_GATES = Object.freeze([
   "beta-live-data",
   "beta-performance",
   "beta-acceptance",
+  "beta-soroban-live",
+  "beta-live-workflow2",
   "e2e",
   "visual-e2e",
   "security",
+  "artifact-secrets",
   "provenance",
 ]);
 
@@ -25,6 +30,7 @@ export const GATE_OWNERS = Object.freeze({
   "client-checks": "platform/client",
   "contract-checks": "platform/contracts",
   "build-reproducibility": "platform/client",
+  "pinned-versions": "platform/client",
   "contract-registry": "platform/contracts",
   "beta-migrations": "platform/storage",
   "beta-backup": "platform/storage",
@@ -39,6 +45,7 @@ export const GATE_OWNERS = Object.freeze({
   "artifact-secrets": "security/platform",
   provenance: "platform/release",
   "beta-soroban-live": "platform/contracts",
+  "beta-live-workflow2": "protocol/relay",
 });
 
 /** Privileged scans may skip on fork PRs; they must not count as a silent pass for releasable. */

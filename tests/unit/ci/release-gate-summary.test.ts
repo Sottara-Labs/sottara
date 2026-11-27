@@ -124,6 +124,27 @@ describe("BETA-088 release-gate summary", () => {
     }
   });
 
+  it("requires every gate artifact produced by the release workflows", () => {
+    for (const gateId of [
+      "build-reproducibility",
+      "pinned-versions",
+      "beta-soroban-live",
+      "beta-live-workflow2",
+      "artifact-secrets",
+    ]) {
+      expect(REQUIRED_GATES).toContain(gateId);
+    }
+  });
+
+  it("keeps REQUIRED_GATES and the CI workflow needs list in sync", () => {
+    expect(() =>
+      execFileSync(process.execPath, ["scripts/ci/verify-gate-coverage.mjs"], {
+        cwd: process.cwd(),
+        stdio: "pipe",
+      }),
+    ).not.toThrow();
+  });
+
   it("builds a non-releasable summary when only client-checks is present", () => {
     const summary = buildReleaseSummary({
       loadedGates: [{ gateId: "client-checks", name: "Client Checks", status: "pass", owner: "x" }],
