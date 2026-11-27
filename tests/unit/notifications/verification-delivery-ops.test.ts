@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   canTransitionDeliveryState,
+  canTransitionProviderEvent,
   classifySmtpReplyCode,
 } from "../../../src/services/notifications/delivery-status";
 import {
@@ -35,6 +36,16 @@ describe("BETA-091: delivery status machine", () => {
   it("allows sent → delivered and rejects hard_bounce → sent", () => {
     expect(canTransitionDeliveryState("sent", "delivered")).toBe(true);
     expect(canTransitionDeliveryState("hard_bounce", "sent")).toBe(false);
+  });
+
+  it("allows provider delivered events from queued, accepted, or deferred states", () => {
+    expect(canTransitionProviderEvent("queued", "delivered")).toBe(true);
+    expect(canTransitionProviderEvent("accepted", "delivered")).toBe(true);
+    expect(canTransitionProviderEvent("deferred", "delivered")).toBe(true);
+    expect(canTransitionProviderEvent("delivered", "complaint")).toBe(true);
+    expect(canTransitionProviderEvent("delivered", "unsubscribed")).toBe(true);
+    expect(canTransitionProviderEvent("hard_bounce", "delivered")).toBe(false);
+    expect(canTransitionProviderEvent("failed", "delivered")).toBe(false);
   });
 });
 
@@ -156,6 +167,124 @@ describe("BETA-091: verification mail queue", () => {
     expect(updated?.state).toBe("hard_bounce");
     expect(JSON.stringify(updated)).not.toContain("tok_bounce_fixture");
     expect(queue.hasRetryCallback("vm_evt_1")).toBe(false);
+  });
+
+  it("accepts a delivered provider webhook for a message still queued", async () => {
+    const queue = new VerificationMailQueue({
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+    queue.enqueue(
+      {
+        messageId: "vm_queued_fast_deliver",
+        purpose: "email_verification",
+        recipientEmail: "elena@stealth.test",
+      },
+      async () => ({ accepted: true }),
+    );
+
+    // Message is still in 'queued' state
+    const record = queue.get("vm_queued_fast_deliver");
+    expect(record?.state).toBe("queued");
+
+    // Provider webhook races ahead before internal queue attempt runs
+    const delivered = queue.applyProviderEvent({
+      messageId: "vm_queued_fast_deliver",
+      eventType: "delivered",
+      providerEventId: "pevt_early_del_1",
+    });
+
+    expect(delivered?.state).toBe("delivered");
+    expect(delivered?.reasonClass).toBe("accepted_by_mta");
+    expect(delivered?.providerEventId).toBe("pevt_early_del_1");
+    // Send callback purged on terminal state
+    expect(queue.hasRetryCallback("vm_queued_fast_deliver")).toBe(false);
+  });
+
+  it("accepts delivered provider webhook from accepted and deferred states", async () => {
+    const queue = new VerificationMailQueue({
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+
+    // 1. accepted -> delivered
+    queue.enqueue(
+      {
+        messageId: "vm_accepted_deliver",
+        purpose: "email_verification",
+        recipientEmail: "frank@stealth.test",
+      },
+      async () => ({ accepted: true, smtpCode: 250 }),
+    );
+    // Queue attempt results in 'sent' normally, but test an explicit accepted state transition:
+    // We can simulate an accepted record directly or apply a deferred retry
+    queue.enqueue(
+      {
+        messageId: "vm_deferred_deliver",
+        purpose: "email_verification",
+        recipientEmail: "grace@stealth.test",
+      },
+      async () => ({ accepted: false, smtpCode: 451, error: new Error("temporary deferral") }),
+    );
+    await queue.attempt("vm_deferred_deliver");
+    expect(queue.get("vm_deferred_deliver")?.state).toBe("deferred");
+
+    const deferredDelivered = queue.applyProviderEvent({
+      messageId: "vm_deferred_deliver",
+      eventType: "delivered",
+      providerEventId: "pevt_def_del_1",
+    });
+    expect(deferredDelivered?.state).toBe("delivered");
+    expect(deferredDelivered?.providerEventId).toBe("pevt_def_del_1");
+
+    // Test transition from accepted state via simulated internal transition or queue
+    const queued2 = queue.enqueue(
+      {
+        messageId: "vm_accepted_state_test",
+        purpose: "email_verification",
+        recipientEmail: "heidi@stealth.test",
+      },
+      async () => ({ accepted: true }),
+    );
+    // Provider event can transition queued record directly to delivered
+    const acceptedDelivered = queue.applyProviderEvent({
+      messageId: "vm_accepted_state_test",
+      eventType: "delivered",
+      providerEventId: "pevt_acc_del_2",
+    });
+    expect(acceptedDelivered?.state).toBe("delivered");
+  });
+
+  it("drops invalid provider event on terminal record with warning log", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const queue = new VerificationMailQueue({
+      now: () => new Date("2026-08-24T00:00:00.000Z"),
+    });
+    queue.enqueue(
+      {
+        messageId: "vm_terminal_1",
+        purpose: "email_verification",
+        recipientEmail: "ivan@stealth.test",
+      },
+      async () => ({ accepted: false, smtpCode: 550, error: new Error("mailbox not found") }),
+    );
+    queue.applyProviderEvent({
+      messageId: "vm_terminal_1",
+      eventType: "hard_bounce",
+    });
+    expect(queue.get("vm_terminal_1")?.state).toBe("hard_bounce");
+
+    // Invalid transition: hard_bounce -> delivered
+    const result = queue.applyProviderEvent({
+      messageId: "vm_terminal_1",
+      eventType: "delivered",
+    });
+
+    expect(result?.state).toBe("hard_bounce");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "Dropped provider event 'delivered' for message 'vm_terminal_1': invalid transition from 'hard_bounce'",
+      ),
+    );
+    warnSpy.mockRestore();
   });
 });
 
