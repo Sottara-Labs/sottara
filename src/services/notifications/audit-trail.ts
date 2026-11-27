@@ -10,8 +10,19 @@ import type { DeliveryReceipt, VerificationEmailMessage } from "./adapter";
  * Security Invariants:
  * - Plaintext tokens are NEVER stored, logged, or included in audit metadata.
  * - All audit entries use non-reversible target references (e.g. SHA-256 email digests).
- * - Every audit record is sequentially linked via cryptographic hash chaining.
+ * - Every audit record is sequentially linked via cryptographic HMAC-SHA256 chaining.
+ * - Unkeyed hashes detect only accidental corruption; keyed HMAC guarantees tamper-evidence.
  */
+
+export interface NotificationAuditKeyConfig {
+  readonly keyId: string;
+  readonly secret: string;
+}
+
+export const DEFAULT_AUDIT_KEY_CONFIG: NotificationAuditKeyConfig = {
+  keyId: "audit-key-v1",
+  secret: "stealth-notification-audit-secret-v1",
+};
 
 export interface DeliveryAuditEvent {
   readonly sequenceId: number;
@@ -30,6 +41,7 @@ export interface DeliveryAuditEvent {
   readonly timestamp: string;
   readonly previousHash: string;
   readonly recordHash: string;
+  readonly keyId: string;
   readonly metadata?: Record<string, string | number | boolean>;
 }
 
@@ -47,8 +59,21 @@ export class NotificationAuditTrail {
   private readonly events: DeliveryAuditEvent[] = [];
   private currentSequence = 0;
   private lastHash = "GENESIS_AUDIT_BLOCK_00000000000000000000000000000000";
+  private readonly auditKeyConfig: NotificationAuditKeyConfig;
 
-  constructor(private readonly maxBufferSize = 5000) {}
+  constructor(
+    private readonly maxBufferSize = 5000,
+    auditKeyConfig?: Partial<NotificationAuditKeyConfig> | NotificationAuditKeyConfig,
+  ) {
+    this.auditKeyConfig = {
+      keyId: auditKeyConfig?.keyId ?? DEFAULT_AUDIT_KEY_CONFIG.keyId,
+      secret: auditKeyConfig?.secret ?? DEFAULT_AUDIT_KEY_CONFIG.secret,
+    };
+  }
+
+  get keyId(): string {
+    return this.auditKeyConfig.keyId;
+  }
 
   /**
    * Records a notification dispatch attempt or completion with cryptographic chaining.
@@ -76,10 +101,11 @@ export class NotificationAuditTrail {
       duration: params.durationMs,
       ts: timestamp,
       prev: prevHash,
+      keyId: this.auditKeyConfig.keyId,
       meta: params.metadata ?? {},
     });
 
-    const recordHash = await computeSha256Digest(payloadToHash);
+    const recordHash = await computeHmacSha256(this.auditKeyConfig.secret, payloadToHash);
     this.lastHash = recordHash;
 
     const event: DeliveryAuditEvent = {
@@ -93,6 +119,7 @@ export class NotificationAuditTrail {
       timestamp,
       previousHash: prevHash,
       recordHash,
+      keyId: this.auditKeyConfig.keyId,
       metadata: params.metadata,
     };
 
@@ -105,16 +132,23 @@ export class NotificationAuditTrail {
   }
 
   /**
-   * Validates the cryptographic integrity of the audit chain from start to end.
+   * Validates the cryptographic integrity of the audit chain from start to end using HMAC-SHA256.
+   * If a verifyKey is provided, it validates against that key; otherwise uses this instance's audit key.
    */
-  async verifyChainIntegrity(): Promise<boolean> {
+  async verifyChainIntegrity(verifyKey?: NotificationAuditKeyConfig): Promise<boolean> {
     if (this.events.length === 0) return true;
+
+    const keyToUse = verifyKey ?? this.auditKeyConfig;
 
     for (let i = 0; i < this.events.length; i++) {
       const event = this.events[i];
       const prevHash = i === 0 ? event.previousHash : this.events[i - 1].recordHash;
 
       if (event.previousHash !== prevHash) {
+        return false;
+      }
+
+      if (event.keyId !== keyToUse.keyId) {
         return false;
       }
 
@@ -128,11 +162,12 @@ export class NotificationAuditTrail {
         duration: event.durationMs,
         ts: event.timestamp,
         prev: event.previousHash,
+        keyId: event.keyId,
         meta: event.metadata ?? {},
       });
 
-      const recomputedHash = await computeSha256Digest(payloadToHash);
-      if (recomputedHash !== event.recordHash) {
+      const isValid = await verifyHmacSha256(keyToUse.secret, payloadToHash, event.recordHash);
+      if (!isValid) {
         return false;
       }
     }
@@ -191,24 +226,66 @@ export class NotificationAuditTrail {
 }
 
 /**
- * Computes a standard SHA-256 digest hex string.
+ * Computes an HMAC-SHA256 hex string over canonical input using Web Crypto API.
  */
-async function computeSha256Digest(input: string): Promise<string> {
+export async function computeHmacSha256(secret: string, input: string): Promise<string> {
+  const enc = new TextEncoder();
   if (typeof crypto !== "undefined" && crypto.subtle) {
-    const data = new TextEncoder().encode(input);
-    const buffer = await crypto.subtle.digest("SHA-256", data);
-    return Array.from(new Uint8Array(buffer))
+    const key = await crypto.subtle.importKey(
+      "raw",
+      enc.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const signature = await crypto.subtle.sign("HMAC", key, enc.encode(input));
+    return Array.from(new Uint8Array(signature))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
   }
 
-  // Fallback FNV-1a / polynomial hash for pure JS test runs
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+  const { createHmac } = await import("node:crypto");
+  return createHmac("sha256", secret).update(input).digest("hex");
+}
+
+/**
+ * Verifies an HMAC-SHA256 signature using crypto.subtle.verify.
+ */
+export async function verifyHmacSha256(
+  secret: string,
+  input: string,
+  hexSignature: string,
+): Promise<boolean> {
+  const enc = new TextEncoder();
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    try {
+      const key = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["verify"],
+      );
+      if (hexSignature.length % 2 !== 0) return false;
+      const sigBytes = new Uint8Array(hexSignature.length / 2);
+      for (let i = 0; i < hexSignature.length; i += 2) {
+        sigBytes[i / 2] = parseInt(hexSignature.slice(i, i + 2), 16);
+      }
+      return await crypto.subtle.verify("HMAC", key, sigBytes, enc.encode(input));
+    } catch {
+      return false;
+    }
   }
-  return `hash_${(h >>> 0).toString(16).padStart(8, "0")}`;
+
+  const { createHmac, timingSafeEqual } = await import("node:crypto");
+  try {
+    const expected = createHmac("sha256", secret).update(input).digest();
+    const actual = Buffer.from(hexSignature, "hex");
+    if (expected.length !== actual.length) return false;
+    return timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
 }
 
 export const globalNotificationAuditTrail = new NotificationAuditTrail();
