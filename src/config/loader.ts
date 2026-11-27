@@ -44,13 +44,31 @@ function parseList(value: unknown, defaultList: string[]): string[] {
   return [...defaultList];
 }
 
-function parseNumber(value: unknown, fallback: number): number {
-  if (typeof value === "number" && !isNaN(value)) return value;
+export function parseNumber(value: unknown, fallback: number, varName?: string): number {
+  if (value === undefined || value === null) return fallback;
   if (typeof value === "string") {
-    const parsed = parseInt(value, 10);
-    if (!isNaN(parsed)) return parsed;
+    const trimmed = value.trim();
+    if (trimmed === "") return fallback;
+    if (!/^-?\d+$/.test(trimmed)) {
+      const name = varName ?? "configuration setting";
+      throw new Error(`Configuration error: ${name} must be a valid integer, got "${value}"`);
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isSafeInteger(parsed)) {
+      const name = varName ?? "configuration setting";
+      throw new Error(`Configuration error: ${name} out of safe integer range: "${value}"`);
+    }
+    return parsed;
   }
-  return fallback;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      const name = varName ?? "configuration setting";
+      throw new Error(`Configuration error: ${name} must be a finite integer, got ${value}`);
+    }
+    return value;
+  }
+  const name = varName ?? "configuration setting";
+  throw new Error(`Configuration error: ${name} must be a valid integer, got ${typeof value}`);
 }
 
 function parseBool(value: unknown, fallback: boolean): boolean {
@@ -150,16 +168,36 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const coordinatorBinding = options.env?.STEALTH_COORDINATOR ?? env.STEALTH_COORDINATOR;
 
   // 3. Session & Security
-  const authChallengeLifetimeMs = parseNumber(env.STEALTH_AUTH_CHALLENGE_LIFETIME_MS, 300000);
-  const authClockSkewMs = parseNumber(env.STEALTH_AUTH_CLOCK_SKEW_MS, 30000);
-  const authNonceTtlMs = parseNumber(env.STEALTH_AUTH_NONCE_TTL_MS, 300000);
-  const quoteLifetimeMs = parseNumber(env.STEALTH_QUOTE_LIFETIME_MS, 300000);
+  const authChallengeLifetimeMs = parseNumber(
+    env.STEALTH_AUTH_CHALLENGE_LIFETIME_MS,
+    300000,
+    "STEALTH_AUTH_CHALLENGE_LIFETIME_MS",
+  );
+  const authClockSkewMs = parseNumber(
+    env.STEALTH_AUTH_CLOCK_SKEW_MS,
+    30000,
+    "STEALTH_AUTH_CLOCK_SKEW_MS",
+  );
+  const authNonceTtlMs = parseNumber(
+    env.STEALTH_AUTH_NONCE_TTL_MS,
+    300000,
+    "STEALTH_AUTH_NONCE_TTL_MS",
+  );
+  const quoteLifetimeMs = parseNumber(
+    env.STEALTH_QUOTE_LIFETIME_MS,
+    300000,
+    "STEALTH_QUOTE_LIFETIME_MS",
+  );
 
   // 4. Relay
   const relayUrl =
     (env.STEALTH_RELAY_URL as string) ??
     (isProd ? "https://relay.betasmail.com" : "https://relay-testnet.betasmail.com");
-  const relayTimeoutMs = parseNumber(env.STEALTH_RELAY_TIMEOUT_MS, 10000);
+  const relayTimeoutMs = parseNumber(
+    env.STEALTH_RELAY_TIMEOUT_MS,
+    10000,
+    "STEALTH_RELAY_TIMEOUT_MS",
+  );
 
   // Secrets
   const cursorSecret =
@@ -218,7 +256,7 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const notificationTransport: NotificationTransport =
     (env.STEALTH_NOTIFICATION_TRANSPORT as NotificationTransport) ?? (isProd ? "smtp" : "sink");
   const smtpHost = (env.STEALTH_SMTP_HOST as string) ?? (isProd ? "smtp.invalid" : "localhost");
-  const smtpPort = parseNumber(env.STEALTH_SMTP_PORT, 587);
+  const smtpPort = parseNumber(env.STEALTH_SMTP_PORT, 587, "STEALTH_SMTP_PORT");
   const smtpSecure = parseBool(env.STEALTH_SMTP_SECURE, smtpPort === 465);
   const smtpStartTls = parseBool(env.STEALTH_SMTP_STARTTLS, smtpPort !== 465);
   const smtpUsername = (env.STEALTH_SMTP_USERNAME as string) || undefined;
@@ -228,25 +266,34 @@ export function loadRuntimeConfig(options: LoadConfigOptions = {}): BetaRuntimeC
   const verificationTokenLifetimeMs = parseNumber(
     env.STEALTH_VERIFICATION_TOKEN_LIFETIME_MS,
     24 * 60 * 60 * 1000,
+    "STEALTH_VERIFICATION_TOKEN_LIFETIME_MS",
   );
   const verificationResendCooldownMs = parseNumber(
     env.STEALTH_VERIFICATION_RESEND_COOLDOWN_MS,
     60 * 1000,
+    "STEALTH_VERIFICATION_RESEND_COOLDOWN_MS",
   );
-  const verificationMaxAttempts = parseNumber(env.STEALTH_VERIFICATION_MAX_ATTEMPTS, 5);
+  const verificationMaxAttempts = parseNumber(
+    env.STEALTH_VERIFICATION_MAX_ATTEMPTS,
+    5,
+    "STEALTH_VERIFICATION_MAX_ATTEMPTS",
+  );
 
   // 8. Beta controls (BETA-095). Kill switches default to the configured
   // baseline (`STEALTH_BETA_KILLSWITCH_DEFAULT`, default "open") so the stack
   // runs normally out of the box; operators may then close any individual
   // switch at runtime without redeploy. A missing/unreachable store still
   // fails closed at enforcement time.
-  const controlTtlSeconds = parseNumber(env.STEALTH_BETA_CONTROL_TTL_SECONDS, 5);
+  const controlTtlSeconds = parseNumber(
+    env.STEALTH_BETA_CONTROL_TTL_SECONDS,
+    5,
+    "STEALTH_BETA_CONTROL_TTL_SECONDS",
+  );
   const killSwitchBaseline = (env.STEALTH_BETA_KILLSWITCH_DEFAULT as string) ?? "open";
   const killSwitchDefaults: Record<string, "open" | "closed"> = {};
   for (const capability of BETA_CAPABILITIES) {
     const override = env[`STEALTH_BETA_KILLSWITCH_${capability.toUpperCase()}`] as
-      | string
-      | undefined;
+      string | undefined;
     if (override === "open" || override === "closed") {
       killSwitchDefaults[capability] = override;
     } else {
