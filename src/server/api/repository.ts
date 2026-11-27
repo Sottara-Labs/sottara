@@ -649,7 +649,9 @@ export interface ApiRepository {
     type?: DurableJobType;
     status?: JobStatus;
     limit?: number;
+    after?: string;
   }): Promise<DurableJob[]>;
+  deleteJob?(jobId: string): Promise<boolean>;
 
   createDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter>;
   getDeadLetter(deadLetterId: string): Promise<DeadLetter | null>;
@@ -657,8 +659,10 @@ export interface ApiRepository {
     jobType?: DurableJobType;
     status?: DeadLetterStatus;
     limit?: number;
+    after?: string;
   }): Promise<DeadLetter[]>;
   updateDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter>;
+  deleteDeadLetter?(deadLetterId: string): Promise<boolean>;
 
   getReceiptCheckpoint(streamId: string): Promise<ReceiptCheckpoint | null>;
   setReceiptCheckpoint(checkpoint: ReceiptCheckpoint): Promise<ReceiptCheckpoint>;
@@ -1637,6 +1641,10 @@ export class ValidatedApiRepository implements ApiRepository {
     return this.inner.listJobs(filter);
   }
 
+  deleteJob(jobId: string): Promise<boolean> {
+    return this.inner.deleteJob ? this.inner.deleteJob(jobId) : Promise.resolve(false);
+  }
+
   createDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
     return this.inner.createDeadLetter(deadLetter);
   }
@@ -1649,12 +1657,19 @@ export class ValidatedApiRepository implements ApiRepository {
     jobType?: DurableJobType;
     status?: DeadLetterStatus;
     limit?: number;
+    after?: string;
   }): Promise<DeadLetter[]> {
     return this.inner.listDeadLetters(filter);
   }
 
   updateDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
     return this.inner.updateDeadLetter(deadLetter);
+  }
+
+  deleteDeadLetter(deadLetterId: string): Promise<boolean> {
+    return this.inner.deleteDeadLetter
+      ? this.inner.deleteDeadLetter(deadLetterId)
+      : Promise.resolve(false);
   }
 
   getReceiptCheckpoint(streamId: string): Promise<ReceiptCheckpoint | null> {
@@ -2507,8 +2522,13 @@ export class RetryableApiRepository implements ApiRepository {
     type?: DurableJobType;
     status?: JobStatus;
     limit?: number;
+    after?: string;
   }): Promise<DurableJob[]> {
     return this.withRetry("listJobs", () => this.inner.listJobs(filter));
+  }
+
+  deleteJob(jobId: string): Promise<boolean> {
+    return this.inner.deleteJob ? this.inner.deleteJob(jobId) : Promise.resolve(false);
   }
 
   createDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
@@ -2523,12 +2543,19 @@ export class RetryableApiRepository implements ApiRepository {
     jobType?: DurableJobType;
     status?: DeadLetterStatus;
     limit?: number;
+    after?: string;
   }): Promise<DeadLetter[]> {
     return this.withRetry("listDeadLetters", () => this.inner.listDeadLetters(filter));
   }
 
   updateDeadLetter(deadLetter: DeadLetter): Promise<DeadLetter> {
     return this.withRetry("updateDeadLetter", () => this.inner.updateDeadLetter(deadLetter));
+  }
+
+  deleteDeadLetter(deadLetterId: string): Promise<boolean> {
+    return this.inner.deleteDeadLetter
+      ? this.inner.deleteDeadLetter(deadLetterId)
+      : Promise.resolve(false);
   }
 
   getReceiptCheckpoint(streamId: string): Promise<ReceiptCheckpoint | null> {
