@@ -20,10 +20,10 @@ Expected result:
 
 ## Manual Review Checklist
 
-1. Open [sample-task-emails.json](file:///home/mxr/stealth/tools/v2/team/team-task-board-from-emails/fixtures/sample-task-emails.json).
+1. Open [sample-task-emails.json](../fixtures/sample-task-emails.json).
 2. Confirm every task can be traced back to a source email by `sourceEmailId`.
 3. Confirm the fixture includes a realistic mix of assignment, due date, priority, and blocked-context examples.
-4. Confirm [review-notes.md](file:///home/mxr/stealth/tools/v2/team/team-task-board-from-emails/docs/review-notes.md) lists what is intentionally out of scope.
+4. Confirm [review-notes.md](review-notes.md) lists what is intentionally out of scope.
 5. Confirm no files outside `tools/v2/team/team-task-board-from-emails/` were changed.
 
 ## Edge Cases Covered

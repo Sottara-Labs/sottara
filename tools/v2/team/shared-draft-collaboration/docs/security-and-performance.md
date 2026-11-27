@@ -27,7 +27,7 @@ As a collaborative workspace, multiple team members can contribute to draft meta
 
 ## 2. Input Validation & Guards Specification
 
-All validations are implemented inside the folder-local [guards/draft-guards.mjs](file:///home/henry/projects/open-source/stealth/tools/v2/team/shared-draft-collaboration/guards/draft-guards.mjs):
+All validations are implemented inside the folder-local [guards/draft-guards.mjs](../guards/draft-guards.mjs):
 
 - **`sanitizeText(raw)`**: Strips tags and carriage returns from inputs.
 - **`validateDraftId(id)`**: Max 64 characters. Restricts characters to alphanumeric and safe separators.

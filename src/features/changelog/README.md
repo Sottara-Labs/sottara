@@ -4,18 +4,18 @@ This directory owns the user-facing Changelog Panel (`src/features/changelog/`) 
 
 ## Files & Components
 
-- **[ChangelogPanel.tsx](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/ChangelogPanel.tsx)**: Main React component. Renders grouped release sections, unread status indicators, entry cards, category badges, and empty state fallbacks. Uses `Intl.DateTimeFormat` date formatting cached module-wide to optimize rendering.
-- **[useChangelog.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/useChangelog.ts)**: Custom React hook. Manages read/unread state tracking against `localStorage`, provides `markAllSeen()` and `isEntryUnread()` helpers, and returns entry data.
-- **[data.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/data.ts)**: Static release dataset (`CHANGELOG_ENTRIES`) ordered newest-first, and exports `LATEST_VERSION`.
-- **[helpers.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/helpers.ts)**: Pure domain helper functions (`groupEntriesByRelease`, `isEntryUnread`, `hasUnreadEntries`, `getSeenVersion`, `setSeenVersion`, `CATEGORY_CONFIG`, `getCategoryLabel`).
-- **[types.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/types.ts)**: TypeScript type definitions for `ChangelogEntry` and `ChangelogCategory`.
-- **[index.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/features/changelog/index.ts)**: Feature barrel file exporting public component, hook, and type interfaces.
+- **[ChangelogPanel.tsx](ChangelogPanel.tsx)**: Main React component. Renders grouped release sections, unread status indicators, entry cards, category badges, and empty state fallbacks. Uses `Intl.DateTimeFormat` date formatting cached module-wide to optimize rendering.
+- **[useChangelog.ts](useChangelog.ts)**: Custom React hook. Manages read/unread state tracking against `localStorage`, provides `markAllSeen()` and `isEntryUnread()` helpers, and returns entry data.
+- **[data.ts](data.ts)**: Static release dataset (`CHANGELOG_ENTRIES`) ordered newest-first, and exports `LATEST_VERSION`.
+- **[helpers.ts](helpers.ts)**: Pure domain helper functions (`groupEntriesByRelease`, `isEntryUnread`, `hasUnreadEntries`, `getSeenVersion`, `setSeenVersion`, `CATEGORY_CONFIG`, `getCategoryLabel`).
+- **[types.ts](types.ts)**: TypeScript type definitions for `ChangelogEntry` and `ChangelogCategory`.
+- **[index.ts](index.ts)**: Feature barrel file exporting public component, hook, and type interfaces.
 
 Related integration & test files:
 
-- **[SettingsModal.tsx](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/src/components/mail/SettingsModal.tsx)**: Hosts the Changelog Panel tab in the Settings UI.
-- **[changelog-helpers.test.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/tests/unit/changelog/changelog-helpers.test.ts)**: Unit test suite for domain logic, data integrity, grouping, category lookup, and `localStorage` error handling.
-- **[changelog.spec.ts](file:///c:/Users/LENOVO/Documents/drips-waves/stealth/tests/e2e/changelog.spec.ts)**: E2E Playwright test validating panel opening and release note display in the app UI.
+- **[SettingsModal.tsx](../../components/mail/SettingsModal.tsx)**: Hosts the Changelog Panel tab in the Settings UI.
+- **[changelog-helpers.test.ts](../../../tests/unit/changelog/changelog-helpers.test.ts)**: Unit test suite for domain logic, data integrity, grouping, category lookup, and `localStorage` error handling.
+- **[changelog.spec.ts](../../../tests/e2e/changelog.spec.ts)**: E2E Playwright test validating panel opening and release note display in the app UI.
 
 ---
 
