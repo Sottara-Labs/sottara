@@ -164,7 +164,7 @@ describe("BETA-091: orchestrator + invite fallback", () => {
     to: "dana@stealth.test",
     purpose: "email_verification",
     verificationUrl: "https://app.test/verify?email=dana%40stealth.test&token=tok_123",
-    expiresAt: new Date("2026-08-25T00:00:00.000Z"),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   };
 
   it("wraps a successful sink send with delivery state metadata", async () => {
